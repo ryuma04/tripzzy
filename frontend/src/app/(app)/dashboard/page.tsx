@@ -30,6 +30,7 @@ import type { Trip, Destination, User } from "@/types";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuthUser();
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);

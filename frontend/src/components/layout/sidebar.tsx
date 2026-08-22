@@ -97,10 +97,11 @@ export const Sidebar: React.FC = () => {
   }, []);
 
   const isActive = (href: string) => {
+    if (href === "/admin" && pathname.startsWith("/admin")) return true;
     if (href === "/dashboard" && (pathname === "/" || pathname === "/dashboard")) return true;
     if (href === "/trips" && pathname === "/trips") return true;
     if (href === "/trips/new" && pathname === "/trips/new") return true;
-    if (href !== "/dashboard" && href !== "/trips" && pathname.startsWith(href)) return true;
+    if (href !== "/dashboard" && href !== "/admin" && href !== "/trips" && pathname.startsWith(href)) return true;
     return false;
   };
 
@@ -110,12 +111,12 @@ export const Sidebar: React.FC = () => {
   };
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full justify-between p-4 bg-[#FFF5E9] border-r-[4px] border-[#171313] select-none">
+    <div className="flex flex-col h-full justify-between p-4 bg-[#EAD7C0] text-[#171313] border-r-[4px] border-[#171313] select-none shadow-[2px_0px_10px_rgba(23,19,19,0.06)]">
       {/* Brand Header with Official Tripzyy Logo */}
       <div>
         <div className="mb-6">
           <Link
-            href="/dashboard"
+            href={isAdmin ? "/admin" : "/dashboard"}
             onClick={() => setIsMobileOpen(false)}
             className="flex items-center justify-center px-3 py-2.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform block"
           >
@@ -124,9 +125,18 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Navigation Category Label */}
-        <div className="px-3 mb-2">
-          <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-600">
-            Main Menu
+        <div className="px-3 mb-2 flex items-center justify-between">
+          <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-700">
+            {isAdmin ? "Admin Station" : "Explorer Menu"}
+          </span>
+          <span
+            className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border border-[#171313] ${
+              isAdmin
+                ? "bg-[#E51919] text-white"
+                : "bg-[#15803D] text-white"
+            }`}
+          >
+            {isAdmin ? "ADMIN" : "USER"}
           </span>
         </div>
 
@@ -142,7 +152,7 @@ export const Sidebar: React.FC = () => {
                 className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl font-display font-bold text-sm tracking-wide border-[3px] transition-all duration-100 ${
                   active
                     ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[3px_3px_0px_#171313] -translate-x-0.5 -translate-y-0.5"
-                    : "border-transparent text-[#171313] hover:bg-[#FAECDC] hover:border-[#171313] hover:-translate-x-0.5"
+                    : "border-transparent text-[#171313] hover:bg-[#DAC0A3] hover:border-[#171313] hover:-translate-x-0.5"
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -156,7 +166,7 @@ export const Sidebar: React.FC = () => {
                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md border border-[#171313] shadow-[1px_1px_0px_#171313] ${
                       active
                         ? "bg-[#171313] text-[#FFF5E9]"
-                        : item.badgeColor || "bg-[#FCA5A5] text-[#171313]"
+                        : item.badgeColor || "bg-[#DAC0A3] text-[#171313]"
                     }`}
                   >
                     {item.badge}
@@ -171,7 +181,7 @@ export const Sidebar: React.FC = () => {
       {/* Footer Nav & User Profile */}
       <div className="pt-4 border-t-[3px] border-[#171313] flex flex-col gap-2">
         <div className="px-3 mb-1">
-          <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-600">
+          <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-700">
             Account & System
           </span>
         </div>
@@ -186,7 +196,7 @@ export const Sidebar: React.FC = () => {
               className={`flex items-center gap-3 px-3.5 py-2 rounded-xl font-display font-bold text-sm border-[2px] transition-all duration-100 ${
                 active
                   ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313]"
-                  : "border-transparent text-[#171313] hover:bg-[#FAECDC] hover:border-[#171313]"
+                  : "border-transparent text-[#171313] hover:bg-[#DAC0A3] hover:border-[#171313]"
               }`}
             >
               <span>{item.icon}</span>
@@ -200,7 +210,7 @@ export const Sidebar: React.FC = () => {
           <Link
             href="/profile"
             onClick={() => setIsMobileOpen(false)}
-            className="flex items-center gap-2.5 truncate"
+            className="flex items-center gap-2.5 truncate flex-1 min-w-0"
           >
             <Avatar
               src={user?.avatar_url}
@@ -219,7 +229,7 @@ export const Sidebar: React.FC = () => {
           <button
             onClick={handleLogout}
             title="Log Out"
-            className="p-1.5 rounded-lg border border-[#171313] bg-[#FFF5E9] hover:bg-[#E51919] hover:text-white transition-colors cursor-pointer text-[#171313]"
+            className="p-1.5 rounded-lg border border-[#171313] bg-[#EAD7C0] hover:bg-[#E51919] hover:text-white transition-colors cursor-pointer text-[#171313] ml-2 flex-shrink-0"
           >
             <LogOut className="w-3.5 h-3.5" />
           </button>
@@ -236,8 +246,8 @@ export const Sidebar: React.FC = () => {
       </aside>
 
       {/* Mobile Top Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-[#FFF5E9] border-b-[3px] border-[#171313] z-40 px-4 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-2">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-[#EAD7C0] border-b-[3px] border-[#171313] z-40 px-4 flex items-center justify-between">
+        <Link href={isAdmin ? "/admin" : "/dashboard"} className="flex items-center gap-2">
           <TripzyyLogo size="sm" />
         </Link>
         <button

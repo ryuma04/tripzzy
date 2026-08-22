@@ -32,6 +32,7 @@ import type { User, Trip } from "@/types";
 
 export default function ProfilePage() {
   const { showToast } = useToast();
+  const { user, updateUser, isAdmin, setRole } = useAuthUser();
   const [isEditing, setIsEditing] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);

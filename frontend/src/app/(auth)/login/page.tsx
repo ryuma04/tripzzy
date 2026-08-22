@@ -3,7 +3,16 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, ArrowRight, ShieldCheck, KeyRound, Sparkles } from "lucide-react";
+import {
+  Lock,
+  Mail,
+  ArrowRight,
+  ShieldCheck,
+  KeyRound,
+  Sparkles,
+  Compass,
+  Shield,
+} from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoInput } from "@/components/ui/neo-input";
 import { NeoButton } from "@/components/ui/neo-button";
@@ -16,6 +25,7 @@ export default function LoginPage() {
   const { showToast } = useToast();
 
   const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [selectedRole, setSelectedRole] = useState<"user" | "admin">("user");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
@@ -77,12 +87,17 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const res = await login(email, password);
-      if (res.success) {
-        showToast("Signed in successfully! Welcome to Tripzyy.", "success");
-        router.push("/dashboard");
+      const res = await login(email, password, selectedRole);
+      if (res && res.success) {
+        if (selectedRole === "admin" || email.toLowerCase().includes("admin")) {
+          showToast("Signed in as Admin Commander! Opening Admin Panel...", "success");
+          router.push("/admin");
+        } else {
+          showToast("Signed in successfully! Welcome to Explorer Dashboard.", "success");
+          router.push("/dashboard");
+        }
       } else {
-        showToast(res.message || "Invalid credentials. Please verify.", "error");
+        showToast(res?.message || "Invalid credentials. Please verify.", "error");
       }
     } catch (err: any) {
       showToast(
@@ -103,17 +118,35 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const res = await loginWithOtp(email, otp);
-      if (res.success) {
-        showToast("OTP verified! Access granted.", "success");
-        router.push("/dashboard");
+      const res = await loginWithOtp(email, otp, selectedRole);
+      if (res && res.success) {
+        if (selectedRole === "admin" || email.toLowerCase().includes("admin")) {
+          showToast("OTP verified! Welcome back, Admin.", "success");
+          router.push("/admin");
+        } else {
+          showToast("OTP verified! Access granted to Explorer Dashboard.", "success");
+          router.push("/dashboard");
+        }
       } else {
-        showToast(res.message || "Invalid verification code.", "error");
+        showToast(res?.message || "Invalid verification code.", "error");
       }
     } catch (err: any) {
       showToast("Invalid verification code. Please try again.", "error");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleQuickPreset = (role: "user" | "admin") => {
+    setSelectedRole(role);
+    if (role === "admin") {
+      setEmail("admin@tripzyy.com");
+      setPassword("admin12345");
+      showToast("Admin credentials loaded.", "info");
+    } else {
+      setEmail("sanket@tripzyy.com");
+      setPassword("explorer123");
+      showToast("Explorer credentials loaded.", "info");
     }
   };
 
@@ -127,8 +160,44 @@ export default function LoginPage() {
           Welcome Back
         </h1>
         <p className="text-xs sm:text-sm font-medium text-neutral-600 mt-1">
-          Access your multi-city itineraries, bookings & map route workspace.
+          Access your {selectedRole === "admin" ? "Admin Control Center" : "Explorer Workspace"} & routes.
         </p>
+      </div>
+
+      {/* Role Selection / Quick Presets */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="font-display font-extrabold text-[10px] uppercase tracking-wider text-[#171313]">
+            Login Role Perspective
+          </span>
+          <span className="text-[10px] font-bold text-neutral-500">Quick Switch</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => handleQuickPreset("user")}
+            className={`py-2 px-3 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+              selectedRole === "user"
+                ? "bg-[#FFF5E9] text-[#171313] border-[#171313] shadow-[2px_2px_0px_#E51919]"
+                : "bg-[#FAF7F2] text-neutral-600 border-neutral-300 hover:bg-[#FFFFFF]"
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5 text-[#E51919]" />
+            <span>User / Explorer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleQuickPreset("admin")}
+            className={`py-2 px-3 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+              selectedRole === "admin"
+                ? "bg-[#FFF0F0] text-[#171313] border-[#171313] shadow-[2px_2px_0px_#E51919]"
+                : "bg-[#FAF7F2] text-neutral-600 border-neutral-300 hover:bg-[#FFFFFF]"
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5 text-[#E51919]" />
+            <span>Admin Panel</span>
+          </button>
+        </div>
       </div>
 
       {/* Auth Mode Toggle */}
@@ -211,7 +280,7 @@ export default function LoginPage() {
             rightIcon={<ArrowRight className="w-5 h-5" />}
             className="w-full mt-2"
           >
-            Sign In to Workspace
+            Sign In as {selectedRole === "admin" ? "Admin Commander" : "Explorer"}
           </NeoButton>
         </form>
       )}

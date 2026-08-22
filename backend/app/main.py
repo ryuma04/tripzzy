@@ -15,6 +15,10 @@ logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
 )
+# These are extremely chatty at DEBUG and drown out anything useful.
+for noisy in ("passlib", "asyncio", "aiosmtplib", "multipart"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
+
 logger = logging.getLogger("tripzyy")
 
 

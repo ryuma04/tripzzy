@@ -7,16 +7,10 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   Compass,
-  MapPin,
-  Sparkles,
   Layers,
   Wallet,
-  Users,
   ChevronRight,
-  CheckCircle2,
-  Calendar,
-  Clock,
-  Globe2,
+  Sparkles,
 } from "lucide-react";
 import { NeoButton } from "@/components/ui/neo-button";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -32,25 +26,19 @@ export default function LandingPage() {
       <LandingNavbar />
 
       {/* ─── 🌍 HERO SECTION — MAIN EXPERIENCE ─── */}
-      <section className="relative px-4 sm:px-8 lg:px-12 pt-8 sm:pt-14 pb-12 sm:pb-20 max-w-7xl mx-auto w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
-          {/* LEFT: Large Editorial Typography & Short Powerful Action */}
+      <section className="relative px-4 sm:px-8 lg:px-12 pt-10 sm:pt-16 pb-14 sm:pb-24 max-w-7xl mx-auto w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          {/* LEFT: Clean, Confident Editorial Typography & Action (5 Columns) */}
           <motion.div
-            initial={{ opacity: 0, x: -30 }}
+            initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-            className="lg:col-span-6 flex flex-col items-start"
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="lg:col-span-5 flex flex-col items-start"
           >
-            {/* Minimal Tag Pill */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-[#FFFFFF] border-2 border-[#171313] rounded-xl font-display font-black text-xs uppercase tracking-wider shadow-[2px_2px_0px_#171313] mb-6">
-              <span className="w-2 h-2 rounded-full bg-[#E51919] animate-pulse" />
-              <span>Smart Travel Architecture</span>
-            </div>
-
             {/* Main Headline */}
-            <h1 className="font-display font-black text-4xl sm:text-6xl lg:text-[64px] xl:text-[72px] text-[#171313] tracking-[-0.04em] leading-[0.98] uppercase mb-5">
+            <h1 className="font-display font-black text-4xl sm:text-6xl lg:text-[62px] xl:text-[70px] text-[#171313] tracking-[-0.04em] leading-[0.98] uppercase mb-6">
               YOUR NEXT <br />
-              <span className="text-[#E51919] underline decoration-[#171313] decoration-[4px] underline-offset-4">
+              <span className="text-[#E51919]">
                 ADVENTURE
               </span> <br />
               STARTS HERE.
@@ -61,8 +49,8 @@ export default function LandingPage() {
               Plan unforgettable journeys, one destination at a time.
             </p>
 
-            {/* Primary Action CTA */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto mb-8">
+            {/* Primary & Secondary CTAs */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
               <Link href="/register">
                 <NeoButton
                   variant="primary"
@@ -83,26 +71,14 @@ export default function LandingPage() {
                 </NeoButton>
               </Link>
             </div>
-
-            {/* Minimal Feature Trust Micro-Checks */}
-            <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-neutral-700">
-              <div className="flex items-center gap-1.5 bg-[#FFFFFF] px-3 py-1.5 rounded-xl border-2 border-[#171313] shadow-[2px_2px_0px_#171313]">
-                <CheckCircle2 className="w-4 h-4 text-[#15803D]" />
-                <span>Multi-Stop Route Mapping</span>
-              </div>
-              <div className="flex items-center gap-1.5 bg-[#FFFFFF] px-3 py-1.5 rounded-xl border-2 border-[#171313] shadow-[2px_2px_0px_#171313]">
-                <CheckCircle2 className="w-4 h-4 text-[#15803D]" />
-                <span>Shared Budget Splits</span>
-              </div>
-            </div>
           </motion.div>
 
-          {/* RIGHT: THE INTERACTIVE TRAVEL MOTION SCENE */}
+          {/* RIGHT: THE EXPANSIVE INTERACTIVE TRAVEL MOTION SCENE (7 Columns ~ 55% Width) */}
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-            className="lg:col-span-6 w-full"
+            transition={{ duration: 0.7, delay: 0.15, ease: "easeOut" }}
+            className="lg:col-span-7 w-full flex justify-center"
           >
             <TravelMotionScene />
           </motion.div>

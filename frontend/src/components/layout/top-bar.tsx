@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,12 +13,22 @@ import {
 } from "lucide-react";
 import { NeoButton } from "@/components/ui/neo-button";
 import { Avatar } from "@/components/ui/avatar";
-import { mockCurrentUser } from "@/data/mock";
+import { getStoredUser, getCurrentUser } from "@/lib/auth";
+import type { User } from "@/types";
 
 export const TopBar: React.FC = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
+  const [user, setUser] = useState<User | null>(getStoredUser());
+
+  useEffect(() => {
+    getCurrentUser().then((res) => {
+      if (res.success && res.data) {
+        setUser(res.data);
+      }
+    });
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,12 +150,12 @@ export const TopBar: React.FC = () => {
           className="flex items-center gap-2 pl-2 border-l-2 border-[#171313] hover:opacity-90 transition-opacity"
         >
           <Avatar
-            src={mockCurrentUser.avatar_url}
-            name={`${mockCurrentUser.first_name} ${mockCurrentUser.last_name}`}
+            src={user?.avatar_url}
+            name={user ? `${user.first_name} ${user.last_name}` : "Explorer"}
             size="sm"
           />
-          <span className="hidden md:inline font-display font-extrabold text-xs uppercase text-[#171313]">
-            {mockCurrentUser.first_name}
+          <span suppressHydrationWarning className="hidden md:inline font-display font-extrabold text-xs uppercase text-[#171313]">
+            {user?.first_name || "Explorer"}
           </span>
         </Link>
       </div>

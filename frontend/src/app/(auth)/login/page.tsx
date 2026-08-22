@@ -9,7 +9,7 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { NeoButton } from "@/components/ui/neo-button";
 import { OtpInput } from "@/components/ui/otp-input";
 import { useToast } from "@/components/ui/toast";
-import { login } from "@/lib/auth";
+import { login, requestLoginOtp, loginWithOtp } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes("@")) {
       setErrors({ email: "Please provide a valid email address." });
@@ -33,11 +33,19 @@ export default function LoginPage() {
     setErrors({});
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const res = await requestLoginOtp(email);
       setIsOtpSent(true);
-      setCountdown(45);
-      showToast(`6-digit verification code sent to ${email}`, "info");
+      setCountdown(60);
+      if (res.data?.debug_verification_code) {
+        showToast(
+          `OTP sent! Dev Code: ${res.data.debug_verification_code}`,
+          "info"
+        );
+        setOtp(res.data.debug_verification_code);
+      } else {
+        showToast(`6-digit verification code sent to ${email}`, "info");
+      }
 
       const timer = setInterval(() => {
         setCountdown((prev) => {
@@ -48,7 +56,11 @@ export default function LoginPage() {
           return prev - 1;
         });
       }, 1000);
-    }, 600);
+    } catch (err: any) {
+      showToast(err.message || "Failed to send OTP code.", "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -65,11 +77,18 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      await login(email, password);
-      showToast("Signed in successfully! Welcome back to Tripzyy.", "success");
-      router.push("/dashboard");
+      const res = await login(email, password);
+      if (res.success) {
+        showToast("Signed in successfully! Welcome to Tripzyy.", "success");
+        router.push("/dashboard");
+      } else {
+        showToast(res.message || "Invalid credentials. Please verify.", "error");
+      }
     } catch (err: any) {
-      showToast(err.message || "Failed to sign in. Please verify credentials.", "error");
+      showToast(
+        err.message || "Failed to sign in. Please verify credentials.",
+        "error"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -84,9 +103,13 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      await login(email, "otp_authenticated");
-      showToast("OTP verified! Access granted.", "success");
-      router.push("/dashboard");
+      const res = await loginWithOtp(email, otp);
+      if (res.success) {
+        showToast("OTP verified! Access granted.", "success");
+        router.push("/dashboard");
+      } else {
+        showToast(res.message || "Invalid verification code.", "error");
+      }
     } catch (err: any) {
       showToast("Invalid verification code. Please try again.", "error");
     } finally {

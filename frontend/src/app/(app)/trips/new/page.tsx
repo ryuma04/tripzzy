@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,7 +24,9 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { TripMap } from "@/components/map";
-import { mockDestinations, mockActivities } from "@/data/mock";
+import { destinationService } from "@/services/destinations";
+import { activityService } from "@/services/activities";
+import { tripService } from "@/services/trips";
 import type { Destination, Activity } from "@/types";
 
 export default function CreateTripPage() {
@@ -33,23 +35,56 @@ export default function CreateTripPage() {
 
   const [currentStep, setCurrentStep] = useState(1);
 
+  // Available catalog
+  const [availableDestinations, setAvailableDestinations] = useState<Destination[]>([]);
+  const [availableActivities, setAvailableActivities] = useState<Activity[]>([]);
+
   // Form State
-  const [title, setTitle] = useState("Goa & Gokarna Coastal Escape");
+  const [title, setTitle] = useState("Goa & Coastal Route Expedition");
   const [startDate, setStartDate] = useState("2026-10-12");
   const [endDate, setEndDate] = useState("2026-10-18");
   const [budget, setBudget] = useState(30000);
   const [travellerCount, setTravellerCount] = useState(2);
-  const [selectedDestinations, setSelectedDestinations] = useState<Destination[]>([
-    mockDestinations[1], // Goa
-    mockDestinations[2], // Gokarna
-  ]);
-  const [selectedActivities, setSelectedActivities] = useState<Activity[]>([
-    mockActivities[3], // Goa scuba
-    mockActivities[5], // Gokarna trek
-  ]);
+  const [selectedDestinations, setSelectedDestinations] = useState<Destination[]>([]);
+  const [selectedActivities, setSelectedActivities] = useState<Activity[]>([]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function loadCatalog() {
+      try {
+        const [destsRes, actsRes] = await Promise.all([
+          destinationService.search({ limit: 30 }),
+          activityService.search({ limit: 30 }),
+        ]);
+
+        if (destsRes.success && destsRes.data) {
+          const items = Array.isArray(destsRes.data)
+            ? destsRes.data
+            : (destsRes.data as any).items || [];
+          setAvailableDestinations(items);
+          if (items.length > 0) {
+            setSelectedDestinations(items.slice(0, 2));
+          }
+        }
+
+        if (actsRes.success && actsRes.data) {
+          const items = Array.isArray(actsRes.data)
+            ? actsRes.data
+            : (actsRes.data as any).items || [];
+          setAvailableActivities(items);
+          if (items.length > 0) {
+            setSelectedActivities(items.slice(0, 2));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load catalog for wizard:", err);
+      }
+    }
+
+    loadCatalog();
+  }, []);
 
   // Validation
   const validateStep1 = () => {
@@ -103,12 +138,98 @@ export default function CreateTripPage() {
   const handleCreateTrip = async () => {
     setIsSubmitting(true);
     try {
-      await new Promise((res) => setTimeout(res, 800));
+      // 1. Create Trip
+      const createRes = await tripService.create({
+        title: title.trim(),
+        start_date: startDate,
+        end_date: endDate,
+        budget: Number(budget),
+        traveller_count: Number(travellerCount),
+      });
+
+      if (!createRes.success || !createRes.data) {
+        throw new Error(createRes.message || "Failed to create trip");
+      }
+
+      const tripId = createRes.data.id;
+
+      // 2. Create Stops
+      const createdStops = [];
+      for (let i = 0; i < selectedDestinations.length; i++) {
+        const dest = selectedDestinations[i];
+        try {
+          const stopRes = await tripService.createStop(tripId, {
+            destination_id: dest.id,
+            arrival_date: startDate,
+            departure_date: endDate,
+            order: i,
+          });
+          if (stopRes.success && stopRes.data) {
+            createdStops.push(stopRes.data);
+          }
+        } catch (err) {
+          console.warn("Failed to create stop for dest", dest.id, err);
+        }
+      }
+
+      // 3. Attach selected activities to the first stop if available
+      if (createdStops.length > 0 && selectedActivities.length > 0) {
+        const firstStopId = createdStops[0].id;
+        for (let j = 0; j < selectedActivities.length; j++) {
+          const act = selectedActivities[j];
+          try {
+            await tripService.addActivity(firstStopId, {
+              title: act.name,
+              date: startDate,
+              start_time: "10:00",
+              end_time: "13:00",
+              estimated_cost: act.estimated_cost || 0,
+              order: j,
+              notes: act.description,
+            });
+          } catch (err) {
+            console.warn("Failed to attach activity", act.id, err);
+          }
+        }
+      }
+
       showToast("Trip and multi-city itinerary initialized!", "success");
-      // Navigate to the newly created trip's detail/builder
-      router.push("/trips/trip_coastal_01");
-    } catch {
-      showToast("Failed to initialize trip. Please try again.", "error");
+      router.push(`/trips/${tripId}`);
+    } catch (err: any) {
+      showToast(err.message || "Failed to initialize trip. Please try again.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
+  const handleGenerateAITrip = async () => {
+    if (!title || !startDate || !endDate || selectedDestinations.length === 0) {
+      showToast("Please fill all required fields and select at least one destination.", "error");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      showToast("AI Route Co-Pilot is generating your itinerary...", "success");
+      
+      const res = await tripService.generate({
+        destination_ids: selectedDestinations.map(d => d.id),
+        start_date: startDate,
+        end_date: endDate,
+        budget_tier: budget > 50000 ? "Luxury" : budget > 20000 ? "Moderate" : "Budget",
+        travel_style: selectedActivities.map(a => a.name).join(", ") || "General Sightseeing",
+        traveller_count: Number(travellerCount),
+      });
+
+      if (!res.success || !res.data) {
+        throw new Error(res.message || "Failed to generate AI trip");
+      }
+
+      showToast("AI Itinerary successfully generated!", "success");
+      router.push(`/trips/${res.data.id}`);
+    } catch (err: any) {
+      showToast(err.message || "AI Generation failed. Please try again.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -310,7 +431,7 @@ export default function CreateTripPage() {
 
               {/* Destination Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {mockDestinations.map((dest) => {
+                {availableDestinations.map((dest) => {
                   const isSelected = selectedDestinations.some((d) => d.id === dest.id);
                   return (
                     <div
@@ -332,7 +453,7 @@ export default function CreateTripPage() {
                           unoptimized
                         />
                         <span className="absolute top-2 left-2 text-[10px] font-extrabold uppercase px-2 py-0.5 bg-[#FFF4E6] border border-[#171313] rounded text-[#171313]">
-                          {dest.region}
+                          {dest.region || dest.country}
                         </span>
                         {isSelected && (
                           <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-[#D94B3D] border-2 border-[#171313] flex items-center justify-center text-white">
@@ -391,7 +512,7 @@ export default function CreateTripPage() {
 
               {/* Activity Recommendations Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {mockActivities.map((act) => {
+                {availableActivities.map((act) => {
                   const isSelected = selectedActivities.some((a) => a.id === act.id);
                   return (
                     <div
@@ -406,7 +527,7 @@ export default function CreateTripPage() {
                       <div className="relative w-24 h-24 rounded-lg border-2 border-[#111111] overflow-hidden flex-shrink-0">
                         <Image
                           src={act.image_url || "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=300&auto=format&fit=crop&q=80"}
-                          alt={act.name}
+                          alt={act.name || "Activity image"}
                           fill
                           sizes="100px"
                           className="object-cover"
@@ -526,6 +647,7 @@ export default function CreateTripPage() {
           Previous Step
         </NeoButton>
 
+
         {currentStep < 4 ? (
           <NeoButton
             variant="primary"
@@ -536,15 +658,25 @@ export default function CreateTripPage() {
             Continue to Step {currentStep + 1}
           </NeoButton>
         ) : (
-          <NeoButton
-            variant="yellow"
-            size="lg"
-            onClick={handleCreateTrip}
-            isLoading={isSubmitting}
-            rightIcon={<Sparkles className="w-5 h-5 stroke-[2.5]" />}
-          >
-            Build & Initialize Itinerary
-          </NeoButton>
+          <div className="flex items-center gap-3">
+            <NeoButton
+              variant="white"
+              size="lg"
+              onClick={handleCreateTrip}
+              isLoading={isSubmitting}
+            >
+              Manual Init
+            </NeoButton>
+            <NeoButton
+              variant="yellow"
+              size="lg"
+              onClick={handleGenerateAITrip}
+              isLoading={isSubmitting}
+              rightIcon={<Sparkles className="w-5 h-5 stroke-[2.5]" />}
+            >
+              Generate with AI Co-Pilot
+            </NeoButton>
+          </div>
         )}
       </div>
     </div>

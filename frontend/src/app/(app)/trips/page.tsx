@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Plus, Filter, ArrowUpDown, MapPin, Share2, Copy, Check } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -12,31 +12,53 @@ import { TripCard } from "@/components/trips/trip-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { mockTrips } from "@/data/mock";
+import { tripService } from "@/services/trips";
 import type { Trip, TripStatus } from "@/types";
 
 export default function TripsPage() {
   const { showToast } = useToast();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [selectedShareTrip, setSelectedShareTrip] = useState<Trip | null>(null);
   const [hasCopied, setHasCopied] = useState(false);
 
+  useEffect(() => {
+    async function loadTrips() {
+      setIsLoading(true);
+      try {
+        const res = await tripService.list({ limit: 50 });
+        if (res.success && res.data) {
+          const items = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          setTrips(items);
+        }
+      } catch (err) {
+        console.error("Failed to load trips:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadTrips();
+  }, []);
+
   // Tab counts
-  const ongoingCount = mockTrips.filter((t) => t.status === "ongoing").length;
-  const upcomingCount = mockTrips.filter((t) => t.status === "upcoming").length;
-  const completedCount = mockTrips.filter((t) => t.status === "completed").length;
+  const ongoingCount = trips.filter((t) => t.status === "ongoing").length;
+  const upcomingCount = trips.filter((t) => t.status === "upcoming").length;
+  const completedCount = trips.filter((t) => t.status === "completed").length;
 
   const tabs = [
-    { id: "all", label: "All Trips", count: mockTrips.length },
+    { id: "all", label: "All Trips", count: trips.length },
     { id: "ongoing", label: "Ongoing", count: ongoingCount },
     { id: "upcoming", label: "Upcoming", count: upcomingCount },
     { id: "completed", label: "Completed", count: completedCount },
   ];
 
   // Filtering
-  const filteredTrips = mockTrips.filter((trip) => {
+  const filteredTrips = trips.filter((trip) => {
     // Tab filter
     if (activeTab !== "all" && trip.status !== activeTab) return false;
     // Search query filter
@@ -45,8 +67,8 @@ export default function TripsPage() {
       const matchTitle = trip.title.toLowerCase().includes(q);
       const matchStops = trip.stops?.some(
         (s) =>
-          s.destination?.name.toLowerCase().includes(q) ||
-          s.destination?.city.toLowerCase().includes(q)
+          s.destination?.name?.toLowerCase().includes(q) ||
+          s.destination?.city?.toLowerCase().includes(q)
       );
       if (!matchTitle && !matchStops) return false;
     }
@@ -63,9 +85,17 @@ export default function TripsPage() {
     return 0;
   });
 
-  const handleShare = (trip: Trip) => {
+  const handleShare = async (trip: Trip) => {
     setSelectedShareTrip(trip);
     setHasCopied(false);
+    try {
+      const res = await tripService.share(trip.id);
+      if (res.success && res.data?.share_slug) {
+        setSelectedShareTrip({ ...trip, share_slug: res.data.share_slug, is_shared: true });
+      }
+    } catch {
+      // Keep existing slug if already shared
+    }
   };
 
   const handleCopyLink = () => {

@@ -139,3 +139,41 @@ async def resend_otp(payload: OTPRequest, db: DbSession):
 
     data = {"debug_verification_code": debug_code} if debug_code else None
     return responses.success(data, generic)
+
+
+@router.post(
+    "/request-login-otp",
+    summary="Request a 6-digit OTP code for instant login",
+    dependencies=[Depends(rate_limit_auth)],
+)
+async def request_login_otp(payload: OTPRequest, db: DbSession):
+    user = await UserRepository(db).get_by_email(payload.email)
+    generic = "If that address is registered, a login code has been sent."
+
+    if user is None or user.status.value != "active":
+        return responses.success(None, generic)
+
+    debug_code = await OTPService.issue(db, user)
+    await db.commit()
+
+    data = {"debug_verification_code": debug_code} if debug_code else None
+    return responses.success(data, generic)
+
+
+@router.post(
+    "/login-otp",
+    summary="Sign in using a 6-digit OTP code",
+    dependencies=[Depends(rate_limit_auth)],
+)
+async def login_otp(payload: OTPVerifyRequest, db: DbSession):
+    service = AuthService(db)
+    user = await OTPService.verify(db, payload.email, payload.code)
+    await db.commit()
+    await db.refresh(user)
+
+    tokens = service.issue_tokens(user)
+    tokens.pop("_expires_at", None)
+    return responses.success(
+        {**tokens, "user": UserResponse.model_validate(user).model_dump()},
+        "Signed in successfully",
+    )

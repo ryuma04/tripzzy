@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 
 from app.core import responses
 from app.core.deps import CurrentUser, DbSession
@@ -88,6 +88,22 @@ async def change_password(
         current_user, payload.current_password, payload.new_password
     )
     return responses.success(None, "Password changed successfully")
+
+
+@router.post("/me/avatar", summary="Upload profile avatar")
+async def upload_avatar(
+    file: UploadFile = File(...), current_user: CurrentUser = None, db: DbSession = None
+):
+    from app.services.image_service import ImageService
+
+    url = await ImageService.upload_avatar(file, current_user.id)
+    current_user.avatar_url = url
+    await db.commit()
+    await db.refresh(current_user)
+    return responses.success(
+        {"avatar_url": url, "user": UserResponse.model_validate(current_user).model_dump()},
+        "Avatar updated successfully",
+    )
 
 
 @router.delete("/me", summary="Delete your account")

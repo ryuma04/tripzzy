@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -16,14 +16,70 @@ import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
 import { Modal } from "@/components/ui/modal";
 import { Dropdown } from "@/components/ui/dropdown";
-import { mockCalendarEvents } from "@/data/mock";
-import type { CalendarEvent } from "@/types";
+import { tripService } from "@/services/trips";
+import type { CalendarEvent, Trip } from "@/types";
 
 export default function CalendarPage() {
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(8); // September 2026
-  const [currentYear, setCurrentYear] = useState(2026);
+  const now = new Date();
+  const [currentMonthIndex, setCurrentMonthIndex] = useState(now.getMonth());
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [viewFilter, setViewFilter] = useState("all");
+
+  useEffect(() => {
+    async function loadCalendar() {
+      try {
+        const res = await tripService.list({ limit: 50 });
+        if (res.success && res.data) {
+          const trips: Trip[] = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          
+          const extractedEvents: CalendarEvent[] = [];
+          for (const trip of trips) {
+            if (trip.stops) {
+              for (const stop of trip.stops) {
+                // Stop arrival
+                if (stop.arrival_date) {
+                  extractedEvents.push({
+                    id: `stop_${stop.id}`,
+                    tripId: trip.id,
+                    title: `Arrive in ${stop.destination?.city || stop.destination?.name || "City"}`,
+                    date: stop.arrival_date,
+                    start_time: "09:00",
+                    end_time: "10:00",
+                    type: "transport",
+                    city: stop.destination?.city || stop.destination?.name || "Stop",
+                  });
+                }
+                // Stop activities
+                if (stop.activities) {
+                  for (const act of stop.activities) {
+                    extractedEvents.push({
+                      id: `act_${act.id}`,
+                      tripId: trip.id,
+                      title: act.title,
+                      date: act.date,
+                      start_time: act.start_time || "10:00",
+                      end_time: act.end_time || "13:00",
+                      type: "activity",
+                      city: stop.destination?.city || stop.destination?.name || "Stop",
+                    });
+                  }
+                }
+              }
+            }
+          }
+          setEvents(extractedEvents);
+        }
+      } catch (err) {
+        console.error("Failed to load calendar events:", err);
+      }
+    }
+
+    loadCalendar();
+  }, []);
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
@@ -57,7 +113,7 @@ export default function CalendarPage() {
 
   const getEventsForDay = (day: number) => {
     const formattedDate = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return mockCalendarEvents.filter((ev) => {
+    return events.filter((ev) => {
       if (viewFilter !== "all" && ev.type !== viewFilter) return false;
       return ev.date === formattedDate;
     });
@@ -229,7 +285,7 @@ export default function CalendarPage() {
               >
                 Close
               </NeoButton>
-              <Link href="/trips/trip_coastal_01">
+              <Link href={selectedEvent.tripId ? `/trips/${selectedEvent.tripId}` : "/trips"}>
                 <NeoButton
                   variant="yellow"
                   size="sm"

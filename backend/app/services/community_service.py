@@ -204,6 +204,7 @@ class CommunityService:
                     "stop_count": s["stop_count"],
                     "activity_count": s["activity_count"],
                     "cities": cities,
+                    "created_at": trip.created_at.isoformat() if trip.created_at else None,
                     "owner": {
                         "id": str(trip.user.id),
                         "first_name": trip.user.first_name,

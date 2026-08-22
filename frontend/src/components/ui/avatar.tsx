@@ -45,7 +45,7 @@ export const Avatar: React.FC<AvatarProps> = ({
           unoptimized
         />
       ) : (
-        <span>{getInitials(name)}</span>
+        <span suppressHydrationWarning>{getInitials(name)}</span>
       )}
     </div>
   );

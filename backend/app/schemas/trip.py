@@ -14,6 +14,15 @@ from app.schemas.common import Money
 from app.schemas.user import PublicUserResponse
 
 
+class TripGenerateRequest(BaseModel):
+    destination_ids: list[uuid.UUID]
+    start_date: date
+    end_date: date
+    budget_tier: str
+    travel_style: str
+    traveller_count: int = 1
+
+
 class TripCreateRequest(BaseModel):
     """The five required fields from the Create-New-Trip screen (spec 7)."""
 

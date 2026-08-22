@@ -1,9 +1,12 @@
 """Trip endpoints (spec section 27, /trips)."""
 
+import logging
 import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
+
+logger = logging.getLogger(__name__)
 
 from app.core import responses
 from app.core.deps import CurrentUser, DbSession, Pagination
@@ -18,6 +21,7 @@ from app.schemas.logistics import (
 )
 from app.schemas.stop import (
     ItineraryDay,
+    ItineraryActivityCreateRequest,
     StopCreateRequest,
     StopDetail,
     StopResponse,
@@ -25,6 +29,7 @@ from app.schemas.stop import (
 from app.schemas.trip import (
     ShareResponse,
     TripCreateRequest,
+    TripGenerateRequest,
     TripDetail,
     TripSummary,
     TripUpdateRequest,
@@ -33,6 +38,8 @@ from app.services.budget_service import BudgetService
 from app.services.itinerary_service import ItineraryService
 from app.services.logistics_service import LogisticsService
 from app.services.trip_service import TripService
+from app.services.ai_service import AIService
+from app.repositories.destination_repository import DestinationRepository
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -73,9 +80,94 @@ async def list_trips(
     )
 
 
+@router.post("/generate", summary="Generate a trip using AI", status_code=201)
+async def generate_trip(
+    payload: TripGenerateRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    # 1. Fetch destinations to get their names
+    dest_repo = DestinationRepository(db)
+    destinations = []
+    for d_id in payload.destination_ids:
+        d = await dest_repo.get(d_id)
+        if d:
+            destinations.append(d)
+    
+    if not destinations:
+        raise ValidationError("At least one valid destination is required.")
+
+    # 2. Call AI Service
+    ai_service = AIService()
+    dest_names = [d.name for d in destinations]
+    
+    try:
+        ai_plan = await ai_service.generate_itinerary(
+            destinations=dest_names,
+            start_date=str(payload.start_date),
+            end_date=str(payload.end_date),
+            budget_tier=payload.budget_tier,
+            travel_style=payload.travel_style,
+            traveller_count=payload.traveller_count,
+        )
+    except Exception as e:
+        raise ValidationError(f"AI Generation failed: {str(e)}")
+
+    # 3. Create the Base Trip
+    trip_create = TripCreateRequest(
+        title=ai_plan.get("title", f"Trip to {dest_names[0]}"),
+        description=ai_plan.get("description", ""),
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        budget=str(ai_plan.get("estimated_budget", 0)),
+        traveller_count=payload.traveller_count,
+    )
+    
+    trip_svc = TripService(db)
+    created_trip = await trip_svc.create(trip_create, current_user)
+    trip_id = created_trip["id"]
+    
+    # 4. Create Stops and Activities
+    itin_svc = ItineraryService(db)
+    
+    for i, stop_plan in enumerate(ai_plan.get("stops", [])):
+        # Try to match destination name
+        dest_name = stop_plan.get("destination_name", "")
+        matched_dest = next((d for d in destinations if d.name.lower() in dest_name.lower()), destinations[0])
+        
+        stop_create = StopCreateRequest(
+            destination_id=matched_dest.id,
+            arrival_date=stop_plan.get("arrival_date", str(payload.start_date)),
+            departure_date=stop_plan.get("departure_date", str(payload.end_date)),
+            order=i
+        )
+        try:
+            created_stop, _ = await itin_svc.create_stop(trip_id, stop_create, current_user)
+            stop_id = created_stop["id"]
+            
+            # Create activities for this stop
+            for j, act_plan in enumerate(stop_plan.get("activities", [])):
+                act_create = ItineraryActivityCreateRequest(
+                    title=act_plan.get("title", "Activity"),
+                    date=act_plan.get("date", str(payload.start_date)),
+                    start_time=act_plan.get("start_time", "10:00"),
+                    end_time=act_plan.get("end_time", "12:00"),
+                    estimated_cost=str(act_plan.get("estimated_cost", 0)),
+                    notes=act_plan.get("notes", ""),
+                    order=j
+                )
+                await itin_svc.add_activity(stop_id, act_create, current_user)
+        except Exception as e:
+            logger.warning(f"Failed to add stop/activity during generation: {e}")
+
+    # Fetch final complete trip
+    final_trip = await trip_svc.detail(trip_id, current_user)
+    return responses.success(TripDetail(**final_trip).model_dump(), "AI Itinerary generated successfully", status_code=201)
+
 @router.post("", summary="Create a trip", status_code=201)
 async def create_trip(
-    payload: TripCreateRequest, current_user: CurrentUser, db: DbSession
+    payload: TripCreateRequest,
+    current_user: CurrentUser, db: DbSession
 ):
     trip = await TripService(db).create(payload, current_user)
     return responses.success(
@@ -128,7 +220,8 @@ async def list_stops(trip_id: uuid.UUID, current_user: CurrentUser, db: DbSessio
 @router.post("/{trip_id}/stops", summary="Add a stop", status_code=201)
 async def add_stop(
     trip_id: uuid.UUID,
-    payload: StopCreateRequest,
+    payload: ItineraryActivityCreateRequest,
+    StopCreateRequest,
     current_user: CurrentUser,
     db: DbSession,
 ):

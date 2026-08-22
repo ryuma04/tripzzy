@@ -50,7 +50,11 @@ export interface UserPreferences {
   travel_style?: string;
   preferred_activities?: string[];
   budget_preference?: "budget" | "moderate" | "luxury";
+  default_budget_tier?: string;
   dietary_restrictions?: string[];
+  dietary_preferences?: string;
+  default_currency?: string;
+  notification_preferences?: Record<string, boolean>;
 }
 
 export interface RegisterPayload {
@@ -88,6 +92,7 @@ export interface Trip {
   user_id: string;
   title: string;
   description?: string;
+  cover_image?: string;
   cover_image_url?: string;
   start_date: string;
   end_date: string;
@@ -96,6 +101,10 @@ export interface Trip {
   status: TripStatus;
   is_shared: boolean;
   share_slug?: string;
+  clone_count?: number;
+  view_count?: number;
+  owner?: User;
+  cities?: string[];
   stops: TripStop[];
   created_at: string;
   updated_at: string;
@@ -290,6 +299,7 @@ export interface BudgetBreakdown {
 
 export interface CalendarEvent {
   id: string;
+  tripId?: string;
   date: string;
   start_time: string;
   end_time: string;
@@ -306,15 +316,26 @@ export interface CalendarResponse {
 
 export interface CommunityTrip {
   id: string;
+  share_slug: string;
   title: string;
+  description?: string;
   start_date: string;
   end_date: string;
-  destinations: string[];
+  duration_days: number;
+  budget?: number;
+  estimated_cost: number;
   traveller_count: number;
-  share_slug: string;
-  creator: {
+  currency: string;
+  cover_image_url?: string;
+  stop_count: number;
+  activity_count: number;
+  cities: string[];
+  owner?: {
+    id: string;
     first_name: string;
     last_name: string;
+    city?: string;
+    country?: string;
     avatar_url?: string;
   };
   created_at: string;
@@ -338,6 +359,8 @@ export interface AdminDashboard {
 
 export interface DestinationSearchParams {
   q?: string;
+  query?: string;
+  city?: string;
   country?: string;
   region?: string;
   page?: number;
@@ -345,6 +368,8 @@ export interface DestinationSearchParams {
 }
 
 export interface ActivitySearchParams {
+  q?: string;
+  query?: string;
   city?: string;
   category?: string;
   min_cost?: number;

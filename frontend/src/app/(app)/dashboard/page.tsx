@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -23,15 +23,70 @@ import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { SearchBar } from "@/components/ui/search-bar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { mockTrips, mockDestinations, mockCurrentUser } from "@/data/mock";
+import { tripService } from "@/services/trips";
+import { destinationService } from "@/services/destinations";
+import { getStoredUser, getCurrentUser } from "@/lib/auth";
+import type { Trip, Destination, User } from "@/types";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [user, setUser] = useState<User | null>(getStoredUser());
+  const [isLoading, setIsLoading] = useState(true);
 
-  const activeTrip = mockTrips.find((t) => t.status === "ongoing") || mockTrips[0];
-  const upcomingTrips = mockTrips.filter((t) => t.status === "upcoming");
-  const completedTrips = mockTrips.filter((t) => t.status === "completed");
+  useEffect(() => {
+    async function loadDashboardData() {
+      setIsLoading(true);
+      try {
+        const [tripsRes, destsRes, userRes] = await Promise.all([
+          tripService.list({ limit: 20 }),
+          destinationService.search({ limit: 6 }),
+          getCurrentUser(),
+        ]);
+
+        if (userRes.success && userRes.data) {
+          setUser(userRes.data);
+        }
+
+        if (tripsRes.success && tripsRes.data) {
+          const items = Array.isArray(tripsRes.data)
+            ? tripsRes.data
+            : (tripsRes.data as any).items || [];
+          setTrips(items);
+        }
+
+        if (destsRes.success && destsRes.data) {
+          const items = Array.isArray(destsRes.data)
+            ? destsRes.data
+            : (destsRes.data as any).items || [];
+          setDestinations(items);
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadDashboardData();
+  }, []);
+
+  const activeTrip =
+    trips.find((t) => t.status === "ongoing") ||
+    trips.find((t) => t.status === "upcoming") ||
+    trips[0];
+
+  const totalBudget = trips.reduce((acc, t) => acc + (t.budget || 0), 0);
+  const totalStops = trips.reduce(
+    (acc, t) => acc + (t.stops?.length || 0),
+    0
+  );
+  const totalTravellers = trips.reduce(
+    (acc, t) => acc + (t.traveller_count || 1),
+    0
+  );
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -50,7 +105,7 @@ export default function DashboardPage() {
                 ACTIVE EXPLORER STATION
               </span>
               <span className="text-xs font-bold text-neutral-700">
-                Welcome back, {mockCurrentUser.first_name}!
+                Welcome back, {user?.first_name || "Explorer"}!
               </span>
             </div>
 
@@ -103,7 +158,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard
           label="Total Expeditions"
-          value={mockTrips.length}
+          value={trips.length}
           icon={<Compass className="w-6 h-6 text-[#FFFFFF]" />}
           color="red"
           trend="+1 new"
@@ -111,7 +166,7 @@ export default function DashboardPage() {
         />
         <StatCard
           label="Planned Budget"
-          value="₹82,000"
+          value={`₹${totalBudget.toLocaleString("en-IN")}`}
           icon={<Wallet className="w-6 h-6 text-[#E51919]" />}
           color="cream"
           trend="Within Limit"
@@ -119,15 +174,15 @@ export default function DashboardPage() {
         />
         <StatCard
           label="Active Stops"
-          value="7 Cities"
+          value={`${totalStops} Stops`}
           icon={<MapPin className="w-6 h-6 text-[#E51919]" />}
           color="white"
-          trend="3 Routes"
+          trend={`${trips.length} Routes`}
           trendPositive={true}
         />
         <StatCard
           label="Expedition Crew"
-          value="6 Friends"
+          value={`${totalTravellers} Travellers`}
           icon={<Users className="w-6 h-6 text-[#171313]" />}
           color="soft-red"
           trend="Synced"
@@ -158,7 +213,7 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3 mb-2">
                   <Badge status={activeTrip.status} />
                   <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#E51919]">
-                    {activeTrip.stops?.map((s) => s.destination?.city).join(" → ")}
+                    {activeTrip.stops?.map((s) => s.destination?.city || s.destination?.name).join(" → ")}
                   </span>
                 </div>
 
@@ -166,7 +221,7 @@ export default function DashboardPage() {
                   {activeTrip.title}
                 </h3>
                 <p className="text-xs sm:text-sm text-neutral-600 font-medium mt-1 max-w-xl">
-                  {activeTrip.description}
+                  {activeTrip.description || "Multi-city journey across regional stops"}
                 </p>
 
                 <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-neutral-700 mt-4">
@@ -192,22 +247,28 @@ export default function DashboardPage() {
                   Route Stops ({activeTrip.stops?.length || 0})
                 </span>
                 <div className="flex flex-col gap-2">
-                  {activeTrip.stops?.map((stop, i) => (
-                    <div
-                      key={stop.id}
-                      className="flex items-center justify-between text-xs font-bold p-2 bg-[#FFFFFF] rounded-lg border border-[#171313]"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded bg-[#E51919] text-white flex items-center justify-center text-[10px] font-extrabold">
-                          0{i + 1}
+                  {activeTrip.stops && activeTrip.stops.length > 0 ? (
+                    activeTrip.stops.map((stop, i) => (
+                      <div
+                        key={stop.id}
+                        className="flex items-center justify-between text-xs font-bold p-2 bg-[#FFFFFF] rounded-lg border border-[#171313]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded bg-[#E51919] text-white flex items-center justify-center text-[10px] font-extrabold">
+                            0{i + 1}
+                          </span>
+                          <span>{stop.destination?.city || stop.destination?.name || `Stop ${i + 1}`}</span>
+                        </div>
+                        <span className="text-neutral-500 font-medium">
+                          {stop.activities?.length || 0} activities
                         </span>
-                        <span>{stop.destination?.city || stop.destination?.name}</span>
                       </div>
-                      <span className="text-neutral-500 font-medium">
-                        {stop.activities?.length || 0} activities
-                      </span>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <span className="text-xs text-neutral-500 font-medium">
+                      No stops added yet.
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -232,7 +293,7 @@ export default function DashboardPage() {
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockDestinations.slice(0, 3).map((dest) => (
+          {destinations.slice(0, 3).map((dest) => (
             <NeoCard
               key={dest.id}
               interactive
@@ -249,7 +310,7 @@ export default function DashboardPage() {
                 />
                 <div className="absolute top-3 left-3">
                   <span className="px-2.5 py-0.5 bg-[#E51919] text-white border-2 border-[#171313] rounded-md font-display font-extrabold text-[11px] uppercase shadow-[2px_2px_0px_#171313]">
-                    {dest.region}
+                    {dest.region || dest.country}
                   </span>
                 </div>
               </div>

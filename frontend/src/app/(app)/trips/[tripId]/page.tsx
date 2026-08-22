@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,6 +19,9 @@ import {
   Clock,
   Copy,
   Check,
+  Map as MapIcon,
+  Wallet,
+  Compass,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -32,7 +35,7 @@ import { ItineraryBuilder } from "@/components/itinerary/itinerary-builder";
 import { ItineraryView } from "@/components/itinerary/itinerary-view";
 import { BudgetOverview } from "@/components/budget/budget-overview";
 import { TripMap } from "@/components/map";
-import { mockTrips } from "@/data/mock";
+import { tripService } from "@/services/trips";
 import type { Trip } from "@/types";
 
 export default function TripDetailPage() {
@@ -41,58 +44,99 @@ export default function TripDetailPage() {
   const { showToast } = useToast();
   const tripId = params.tripId as string;
 
-  // Find trip by ID (fallback to first trip)
-  const [trip, setTrip] = useState<Trip>(
-    mockTrips.find((t) => t.id === tripId) || mockTrips[0]
-  );
-
-  const [activeTab, setActiveTab] = useState("map");
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("itinerary");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
   const [selectedMapStopId, setSelectedMapStopId] = useState<string | undefined>(undefined);
 
   const tabs = [
-    {
-      id: "map",
-      label: "Interactive Route Map",
-      icon: <MapPin className="w-4 h-4" />,
-    },
-    {
-      id: "builder",
-      label: "Itinerary Builder",
-      icon: <Layers className="w-4 h-4" />,
-    },
-    {
-      id: "timeline",
-      label: "Day-by-Day View",
-      icon: <Clock className="w-4 h-4" />,
-    },
-    {
-      id: "budget",
-      label: "Budget & Expenses",
-      icon: <Receipt className="w-4 h-4" />,
-    },
-    {
-      id: "transport",
-      label: "Transport & Stays",
-      icon: <Train className="w-4 h-4" />,
-    },
+    { id: "itinerary", label: "Itinerary & Stops", count: trip?.stops?.length || 0, icon: <Layers className="w-4 h-4" /> },
+    { id: "map", label: "Interactive Route Map", icon: <MapIcon className="w-4 h-4" /> },
+    { id: "budget", label: "Budget & Expenses", icon: <Wallet className="w-4 h-4" /> },
+    { id: "overview", label: "Trip Summary", icon: <Compass className="w-4 h-4" /> },
   ];
 
-  const handleCopyShareLink = () => {
-    const url = `${window.location.origin}/community?slug=${trip.share_slug || trip.id}`;
-    navigator.clipboard.writeText(url);
-    setHasCopied(true);
-    showToast("Shareable link copied to clipboard!", "success");
-    setTimeout(() => setHasCopied(false), 3000);
+  useEffect(() => {
+    async function loadTripDetail() {
+      setIsLoading(true);
+      try {
+        const res = await tripService.get(tripId);
+        if (res.success && res.data) {
+          setTrip(res.data);
+        } else {
+          showToast(res.message || "Failed to load trip.", "error");
+        }
+      } catch (err) {
+        console.error("Error loading trip detail:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    if (tripId) {
+      loadTripDetail();
+    }
+  }, [tripId]);
+
+  const handleCopyShareLink = async () => {
+    if (!trip) return;
+    try {
+      const shareRes = await tripService.share(trip.id);
+      const slug = shareRes.data?.share_slug || trip.share_slug || trip.id;
+      const url = `${window.location.origin}/community?slug=${slug}`;
+      navigator.clipboard.writeText(url);
+      setHasCopied(true);
+      showToast("Shareable link copied to clipboard!", "success");
+      setTimeout(() => setHasCopied(false), 3000);
+    } catch {
+      const url = `${window.location.origin}/community?slug=${trip.share_slug || trip.id}`;
+      navigator.clipboard.writeText(url);
+      setHasCopied(true);
+      showToast("Shareable link copied to clipboard!", "success");
+      setTimeout(() => setHasCopied(false), 3000);
+    }
   };
 
-  const handleDeleteTrip = () => {
-    setIsDeleteModalOpen(false);
-    showToast("Trip deleted from workspace.", "info");
-    router.push("/trips");
+  const handleDeleteTrip = async () => {
+    if (!trip) return;
+    try {
+      const res = await tripService.delete(trip.id);
+      if (res.success) {
+        setIsDeleteModalOpen(false);
+        showToast("Trip deleted from workspace.", "info");
+        router.push("/trips");
+      } else {
+        showToast(res.message || "Failed to delete trip.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to delete trip.", "error");
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-12 text-center">
+        <div className="inline-block px-4 py-2 bg-[#FFD54A] border-2 border-[#171313] rounded-xl font-display font-extrabold text-sm shadow-[3px_3px_0px_#171313]">
+          Loading expedition details...
+        </div>
+      </div>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <div className="p-12 text-center flex flex-col items-center gap-4">
+        <h3 className="font-display font-extrabold text-xl">Trip Not Found</h3>
+        <p className="text-sm text-neutral-600">The requested itinerary could not be loaded.</p>
+        <Link href="/trips">
+          <NeoButton variant="primary">Return to All Trips</NeoButton>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Settings,
   Bell,
@@ -9,12 +9,14 @@ import {
   Save,
   Globe,
   Lock,
+  KeyRound,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
 import { NeoInput } from "@/components/ui/neo-input";
 import { useToast } from "@/components/ui/toast";
+import { userService } from "@/services/users";
 
 export default function SettingsPage() {
   const { showToast } = useToast();
@@ -22,12 +24,100 @@ export default function SettingsPage() {
   const [travelStyle, setTravelStyle] = useState("Backpacking & Adventure");
   const [budgetPreference, setBudgetPreference] = useState("budget");
   const [dietary, setDietary] = useState("Vegetarian Friendly");
-  const [currency, setCurrency] = useState("INR (₹)");
+  const [currency, setCurrency] = useState("INR");
   const [emailNotifications, setEmailNotifications] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  // Password change state
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  useEffect(() => {
+    async function loadPrefs() {
+      setIsLoading(true);
+      try {
+        const res = await userService.getPreferences();
+        if (res.success && res.data) {
+          const p = res.data;
+          if (p.travel_style) setTravelStyle(p.travel_style);
+          if (p.default_budget_tier) setBudgetPreference(p.default_budget_tier);
+          if (p.dietary_preferences) setDietary(p.dietary_preferences);
+          if (p.default_currency) setCurrency(p.default_currency);
+        }
+      } catch (err) {
+        console.error("Failed to load preferences:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadPrefs();
+  }, []);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast("Application preferences saved successfully!", "success");
+    setIsSaving(true);
+    try {
+      const res = await userService.updatePreferences({
+        travel_style: travelStyle,
+        default_budget_tier: budgetPreference,
+        dietary_preferences: dietary,
+        default_currency: currency,
+        notification_preferences: {
+          email: emailNotifications,
+          trip_reminders: emailNotifications,
+        },
+      });
+
+      if (res.success) {
+        showToast("Application preferences saved successfully!", "success");
+      } else {
+        showToast(res.message || "Failed to update preferences.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to save preferences.", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPassword || !newPassword) {
+      showToast("Please fill in current and new password.", "error");
+      return;
+    }
+    if (newPassword.length < 8) {
+      showToast("New password must be at least 8 characters.", "error");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      showToast("New passwords do not match.", "error");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const res = await userService.changePassword({
+        current_password: oldPassword,
+        new_password: newPassword,
+      });
+      if (res.success) {
+        showToast("Password updated successfully!", "success");
+        setOldPassword("");
+        setNewPassword("");
+        setConfirmNewPassword("");
+      } else {
+        showToast(res.message || "Failed to update password.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to update password.", "error");
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   return (
@@ -137,14 +227,70 @@ export default function SettingsPage() {
         <div className="flex justify-end">
           <NeoButton
             type="submit"
-            variant="yellow"
+            variant="primary"
             size="md"
+            isLoading={isSaving}
             leftIcon={<Save className="w-4 h-4" />}
           >
             Save Preferences
           </NeoButton>
         </div>
       </form>
+
+      {/* Security & Password Card */}
+      <NeoCard className="p-6 md:p-8 bg-[#FFFFFF] border-[3px] border-[#171313]">
+        <div className="flex items-center gap-2 pb-4 border-b-2 border-[#171313] mb-6">
+          <KeyRound className="w-5 h-5 text-[#D94B3D]" />
+          <h3 className="font-display font-extrabold text-xl text-[#171313]">
+            Security & Account Password
+          </h3>
+        </div>
+
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+          <NeoInput
+            label="Current Password"
+            type="password"
+            placeholder="••••••••••••"
+            value={oldPassword}
+            onChange={(e) => setOldPassword(e.target.value)}
+            leftIcon={<Lock className="w-4 h-4" />}
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <NeoInput
+              label="New Password (min 8 chars)"
+              type="password"
+              placeholder="••••••••••••"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              leftIcon={<Lock className="w-4 h-4" />}
+              required
+            />
+            <NeoInput
+              label="Confirm New Password"
+              type="password"
+              placeholder="••••••••••••"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              leftIcon={<Lock className="w-4 h-4" />}
+              required
+            />
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <NeoButton
+              type="submit"
+              variant="primary"
+              size="md"
+              isLoading={isChangingPassword}
+              leftIcon={<Lock className="w-4 h-4" />}
+            >
+              Update Password
+            </NeoButton>
+          </div>
+        </form>
+      </NeoCard>
     </div>
   );
 }

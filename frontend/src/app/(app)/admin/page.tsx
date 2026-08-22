@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ShieldAlert,
   Users,
@@ -24,35 +24,83 @@ import { NeoBarChart } from "@/components/charts/neo-bar-chart";
 import { NeoPieChart } from "@/components/charts/neo-pie-chart";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
-import { mockAdminDashboard, mockTrips } from "@/data/mock";
-import type { User } from "@/types";
+import { adminService } from "@/services/admin";
+import { tripService } from "@/services/trips";
+import type { User, AdminDashboard, Trip } from "@/types";
 
 export default function AdminPage() {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
-  const [usersList, setUsersList] = useState<User[]>(mockAdminDashboard.recent_users);
+  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [tripsList, setTripsList] = useState<Trip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadAdminData() {
+      setIsLoading(true);
+      try {
+        const [dashRes, usersRes, tripsRes] = await Promise.all([
+          adminService.getDashboard(),
+          adminService.getUsers(1, 50),
+          tripService.list({ limit: 50 }),
+        ]);
+
+        if (dashRes.success && dashRes.data) {
+          setDashboard(dashRes.data);
+        }
+
+        if (usersRes.success && usersRes.data) {
+          const items = Array.isArray(usersRes.data)
+            ? usersRes.data
+            : (usersRes.data as any).items || [];
+          setUsersList(items);
+        }
+
+        if (tripsRes.success && tripsRes.data) {
+          const items = Array.isArray(tripsRes.data)
+            ? tripsRes.data
+            : (tripsRes.data as any).items || [];
+          setTripsList(items);
+        }
+      } catch (err) {
+        console.error("Failed to load admin data:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadAdminData();
+  }, []);
 
   const tabs = [
     { id: "overview", label: "Analytics & KPI Overview", icon: <BarChart3 className="w-4 h-4" /> },
     { id: "users", label: "User Management", count: usersList.length, icon: <Users className="w-4 h-4" /> },
-    { id: "trips", label: "Platform Trips", count: mockTrips.length, icon: <MapPin className="w-4 h-4" /> },
+    { id: "trips", label: "Platform Trips", count: tripsList.length, icon: <MapPin className="w-4 h-4" /> },
   ];
 
-  const handleToggleRole = (userId: string) => {
-    setUsersList(
-      usersList.map((u) => {
-        if (u.id === userId) {
-          const newRole = u.role === "admin" ? "user" : "admin";
-          showToast(`User ${u.first_name} role updated to ${newRole.toUpperCase()}`, "success");
-          return { ...u, role: newRole };
-        }
-        return u;
-      })
-    );
+  const handleToggleRole = async (userId: string) => {
+    const userToUpdate = usersList.find((u) => u.id === userId);
+    if (!userToUpdate) return;
+    const newRole = userToUpdate.role === "admin" ? "user" : "admin";
+
+    try {
+      const res = await adminService.updateUserStatus(userId, { role: newRole });
+      if (res.success) {
+        setUsersList(
+          usersList.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+        );
+        showToast(`User role updated to ${newRole.toUpperCase()}`, "success");
+      } else {
+        showToast(res.message || "Failed to update role.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to update role.", "error");
+    }
   };
 
-  const pieData = mockAdminDashboard.activity_categories.map((c, i) => {
-    const colors = ["#D94B3D", "#A8322A", "#F3B5A8", "#E8D8C8"];
+  const pieData = (dashboard?.activity_categories || []).map((c, i) => {
+    const colors = ["#D94B3D", "#A8322A", "#F3B5A8", "#E8D8C8", "#171313"];
     return {
       name: c.category,
       value: c.count,
@@ -74,7 +122,7 @@ export default function AdminPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard
           label="Total Registered Users"
-          value={mockAdminDashboard.total_users.toLocaleString()}
+          value={(dashboard?.total_users ?? usersList.length).toLocaleString()}
           trend="+12%"
           trendPositive={true}
           icon={<Users className="w-6 h-6 text-white" />}
@@ -82,7 +130,7 @@ export default function AdminPage() {
         />
         <StatCard
           label="Total Trips Planned"
-          value={mockAdminDashboard.total_trips.toLocaleString()}
+          value={(dashboard?.total_trips ?? tripsList.length).toLocaleString()}
           trend="+24%"
           trendPositive={true}
           icon={<MapPin className="w-6 h-6 text-[#D94B3D]" />}
@@ -90,13 +138,13 @@ export default function AdminPage() {
         />
         <StatCard
           label="Catalog Destinations"
-          value={mockAdminDashboard.total_destinations}
+          value={dashboard?.total_destinations ?? 0}
           icon={<Compass className="w-6 h-6 text-[#171313]" />}
           color="white"
         />
         <StatCard
           label="Curated Activities"
-          value={mockAdminDashboard.total_activities.toLocaleString()}
+          value={(dashboard?.total_activities ?? 0).toLocaleString()}
           trend="+5%"
           trendPositive={true}
           icon={<ActivityIcon className="w-6 h-6 text-[#D94B3D]" />}
@@ -122,7 +170,7 @@ export default function AdminPage() {
                 </h3>
               </div>
               <NeoBarChart
-                data={mockAdminDashboard.trip_trends.map((t) => ({
+                data={(dashboard?.trip_trends || []).map((t) => ({
                   name: t.month,
                   value: t.count,
                 }))}
@@ -143,33 +191,35 @@ export default function AdminPage() {
           </div>
 
           {/* Popular Destinations Comparison */}
-          <NeoCard className="p-6 md:p-8">
-            <h3 className="font-display font-extrabold text-lg text-[#111111] mb-4">
-              Top 6 Trending Multi-City Hubs
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {mockAdminDashboard.popular_destinations.map((dest, i) => (
-                <div
-                  key={dest.name}
-                  className="p-4 bg-neutral-50 border-2 border-[#111111] rounded-xl flex items-center justify-between shadow-[2px_2px_0px_#111111]"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-lg bg-[#FFD54A] border border-[#111111] flex items-center justify-center font-display font-extrabold text-xs">
-                      #{i + 1}
-                    </span>
-                    <div>
-                      <h5 className="font-display font-extrabold text-sm text-[#111111]">
-                        {dest.name}
-                      </h5>
-                      <span className="text-xs text-neutral-500 font-medium">
-                        {dest.trips.toLocaleString()} trips planned
+          {dashboard?.popular_destinations && dashboard.popular_destinations.length > 0 && (
+            <NeoCard className="p-6 md:p-8">
+              <h3 className="font-display font-extrabold text-lg text-[#111111] mb-4">
+                Top Trending Multi-City Hubs
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {dashboard.popular_destinations.map((dest, i) => (
+                  <div
+                    key={dest.name}
+                    className="p-4 bg-neutral-50 border-2 border-[#111111] rounded-xl flex items-center justify-between shadow-[2px_2px_0px_#111111]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-[#FFD54A] border border-[#111111] flex items-center justify-center font-display font-extrabold text-xs">
+                        #{i + 1}
                       </span>
+                      <div>
+                        <h5 className="font-display font-extrabold text-sm text-[#111111]">
+                          {dest.name}
+                        </h5>
+                        <span className="text-xs text-neutral-500 font-medium">
+                          {dest.trips.toLocaleString()} trips planned
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </NeoCard>
+                ))}
+              </div>
+            </NeoCard>
+          )}
         </div>
       )}
 
@@ -268,7 +318,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {mockTrips.map((t) => (
+              {tripsList.map((t) => (
                 <tr
                   key={t.id}
                   className="border-b border-neutral-200 hover:bg-neutral-50 font-medium text-xs text-[#111111]"

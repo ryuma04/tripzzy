@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import {
   MapPin,
@@ -22,8 +22,9 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { mockDestinations, mockActivities } from "@/data/mock";
-import type { Trip, TripStop, ItineraryActivity } from "@/types";
+import { tripService } from "@/services/trips";
+import { destinationService } from "@/services/destinations";
+import type { Trip, TripStop, ItineraryActivity, Destination } from "@/types";
 
 interface ItineraryBuilderProps {
   trip: Trip;
@@ -36,52 +37,93 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
 }) => {
   const { showToast } = useToast();
   const [stops, setStops] = useState<TripStop[]>(trip.stops || []);
+  const [availableDestinations, setAvailableDestinations] = useState<Destination[]>([]);
 
   // Modal for adding a new section/stop
   const [isAddSectionOpen, setIsAddSectionOpen] = useState(false);
-  const [selectedDestId, setSelectedDestId] = useState(mockDestinations[0].id);
-  const [arrivalDate, setArrivalDate] = useState("2026-09-18");
-  const [departureDate, setDepartureDate] = useState("2026-09-20");
+  const [selectedDestId, setSelectedDestId] = useState<string>("");
+  const [arrivalDate, setArrivalDate] = useState(trip.start_date || "2026-10-12");
+  const [departureDate, setDepartureDate] = useState(trip.end_date || "2026-10-18");
 
   // Modal for adding an activity to a specific stop
   const [activeStopForActivity, setActiveStopForActivity] = useState<string | null>(null);
   const [actTitle, setActTitle] = useState("");
-  const [actDate, setActDate] = useState("2026-09-10");
+  const [actDate, setActDate] = useState(trip.start_date || "2026-10-12");
   const [actStart, setActStart] = useState("10:00");
   const [actEnd, setActEnd] = useState("13:00");
   const [actCost, setActCost] = useState(500);
 
-  // Add new section/stop (Wireframe Screen 5 "Add another Section")
-  const handleAddSection = () => {
-    const dest = mockDestinations.find((d) => d.id === selectedDestId) || mockDestinations[0];
-    const newStop: TripStop = {
-      id: `stop_${Date.now()}`,
-      trip_id: trip.id,
-      destination_id: dest.id,
-      destination: dest,
-      arrival_date: arrivalDate,
-      departure_date: departureDate,
-      order: stops.length + 1,
-      accommodations: [],
-      activities: [],
-    };
-    const updated = [...stops, newStop];
-    setStops(updated);
-    setIsAddSectionOpen(false);
-    showToast(`Added stop for ${dest.name} to itinerary!`, "success");
-    if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+  useEffect(() => {
+    async function loadDestinations() {
+      try {
+        const res = await destinationService.search({ limit: 50 });
+        if (res.success && res.data) {
+          const items = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          setAvailableDestinations(items);
+          if (items.length > 0 && !selectedDestId) {
+            setSelectedDestId(items[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load destinations in builder:", err);
+      }
+    }
+    loadDestinations();
+  }, []);
+
+  // Sync stops if trip changes
+  useEffect(() => {
+    if (trip.stops) {
+      setStops(trip.stops);
+    }
+  }, [trip]);
+
+  // Add new section/stop
+  const handleAddSection = async () => {
+    if (!selectedDestId) return;
+    try {
+      const res = await tripService.createStop(trip.id, {
+        destination_id: selectedDestId,
+        arrival_date: arrivalDate,
+        departure_date: departureDate,
+        order: stops.length,
+      });
+
+      if (res.success && res.data) {
+        const updated = [...stops, res.data];
+        setStops(updated);
+        setIsAddSectionOpen(false);
+        showToast("Added stop section to itinerary!", "success");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+      } else {
+        showToast(res.message || "Failed to add stop.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to add stop.", "error");
+    }
   };
 
   // Remove stop
-  const handleRemoveStop = (stopId: string) => {
-    const updated = stops.filter((s) => s.id !== stopId);
-    setStops(updated);
-    showToast("Stop section removed.", "info");
-    if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+  const handleRemoveStop = async (stopId: string) => {
+    try {
+      const res = await tripService.deleteStop(stopId);
+      if (res.success) {
+        const updated = stops.filter((s) => s.id !== stopId);
+        setStops(updated);
+        showToast("Stop section removed.", "info");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+      } else {
+        showToast(res.message || "Failed to delete stop.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to delete stop.", "error");
+    }
   };
 
   // Reorder stop
-  const handleMoveStop = (index: number, direction: "up" | "down") => {
+  const handleMoveStop = async (index: number, direction: "up" | "down") => {
     if (
       (direction === "up" && index === 0) ||
       (direction === "down" && index === stops.length - 1)
@@ -93,49 +135,74 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
     newStops[index] = newStops[targetIndex];
     newStops[targetIndex] = temp;
     setStops(newStops);
-    showToast("Stops reordered successfully.", "success");
+
+    try {
+      const orderedIds = newStops.map((s) => s.id);
+      await tripService.reorderStops(trip.id, orderedIds);
+      showToast("Stops reordered successfully.", "success");
+      if (onUpdateTrip) onUpdateTrip({ ...trip, stops: newStops });
+    } catch {
+      showToast("Failed to sync new order to server.", "error");
+    }
   };
 
   // Add activity to stop
-  const handleAddActivity = () => {
+  const handleAddActivity = async () => {
     if (!activeStopForActivity || !actTitle.trim()) return;
-    const newAct: ItineraryActivity = {
-      id: `act_${Date.now()}`,
-      stop_id: activeStopForActivity,
-      title: actTitle,
-      date: actDate,
-      start_time: actStart,
-      end_time: actEnd,
-      estimated_cost: actCost,
-      order: 99,
-    };
-    const updated = stops.map((s) => {
-      if (s.id === activeStopForActivity) {
-        return { ...s, activities: [...s.activities, newAct] };
+    try {
+      const res = await tripService.addActivity(activeStopForActivity, {
+        title: actTitle.trim(),
+        date: actDate,
+        start_time: actStart,
+        end_time: actEnd,
+        estimated_cost: Number(actCost),
+        order: 99,
+      });
+
+      if (res.success && res.data) {
+        const newAct = res.data;
+        const updated = stops.map((s) => {
+          if (s.id === activeStopForActivity) {
+            return { ...s, activities: [...(s.activities || []), newAct] };
+          }
+          return s;
+        });
+        setStops(updated);
+        setActiveStopForActivity(null);
+        setActTitle("");
+        showToast("Activity added to destination stop!", "success");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+      } else {
+        showToast(res.message || "Failed to add activity.", "error");
       }
-      return s;
-    });
-    setStops(updated);
-    setActiveStopForActivity(null);
-    setActTitle("");
-    showToast("Activity added to destination stop!", "success");
-    if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+    } catch (err: any) {
+      showToast(err.message || "Failed to add activity.", "error");
+    }
   };
 
   // Remove activity
-  const handleRemoveActivity = (stopId: string, actId: string) => {
-    const updated = stops.map((s) => {
-      if (s.id === stopId) {
-        return {
-          ...s,
-          activities: s.activities.filter((a) => a.id !== actId),
-        };
+  const handleRemoveActivity = async (stopId: string, actId: string) => {
+    try {
+      const res = await tripService.deleteActivity(actId);
+      if (res.success) {
+        const updated = stops.map((s) => {
+          if (s.id === stopId) {
+            return {
+              ...s,
+              activities: s.activities.filter((a) => a.id !== actId),
+            };
+          }
+          return s;
+        });
+        setStops(updated);
+        showToast("Activity removed.", "info");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+      } else {
+        showToast(res.message || "Failed to remove activity.", "error");
       }
-      return s;
-    });
-    setStops(updated);
-    showToast("Activity removed.", "info");
-    if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updated });
+    } catch (err: any) {
+      showToast(err.message || "Failed to remove activity.", "error");
+    }
   };
 
   return (
@@ -331,9 +398,9 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
               onChange={(e) => setSelectedDestId(e.target.value)}
               className="w-full bg-[#FFFFFF] text-[#111111] font-bold text-sm border-[3px] border-[#111111] rounded-xl p-3 outline-none shadow-[3px_3px_0px_#111111]"
             >
-              {mockDestinations.map((d) => (
+              {availableDestinations.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name} ({d.region}, {d.country})
+                  {d.name} ({d.city}, {d.country})
                 </option>
               ))}
             </select>

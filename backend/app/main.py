@@ -138,6 +138,7 @@ def _register_routers(app: FastAPI) -> None:
         destinations,
         itinerary,
         logistics,
+        places,
         stops,
         trips,
         users,
@@ -146,7 +147,7 @@ def _register_routers(app: FastAPI) -> None:
     prefix = settings.API_V1_PREFIX
     for module in (
         auth, users, trips, stops, itinerary, destinations, activities,
-        calendar, admin,
+        calendar, admin, places
     ):
         app.include_router(module.router, prefix=prefix)
 

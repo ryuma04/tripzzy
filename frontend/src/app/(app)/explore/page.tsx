@@ -26,8 +26,11 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { TripMap } from "@/components/map";
-import { mockDestinations, mockActivities, mockTrips } from "@/data/mock";
-import type { Destination, Activity } from "@/types";
+import { destinationService } from "@/services/destinations";
+import { activityService } from "@/services/activities";
+import { tripService } from "@/services/trips";
+import { placesService, PlaceSuggestion, PlaceDetails } from "@/services/places";
+import type { Destination, Activity, Trip } from "@/types";
 
 function ExploreContent() {
   const searchParams = useSearchParams();
@@ -37,60 +40,145 @@ function ExploreContent() {
   const [activeTab, setActiveTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [userTrips, setUserTrips] = useState<Trip[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [isAddToTripOpen, setIsAddToTripOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [placesQuery, setPlacesQuery] = useState("");
+  const [placesSuggestions, setPlacesSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [placesResults, setPlacesResults] = useState<PlaceDetails[]>([]);
+  const [isPlacesSearching, setIsPlacesSearching] = useState(false);
+  const [placesCategory, setPlacesCategory] = useState("");
+
+  useEffect(() => {
+    if (activeTab !== "google_places" || placesQuery.length < 3) {
+      setPlacesSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await placesService.autocomplete(placesQuery);
+        if (res.success && res.data?.predictions) {
+          setPlacesSuggestions(res.data.predictions);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [placesQuery, activeTab]);
+
+  const handleSearchPlaces = async (query: string, type: string) => {
+    setIsPlacesSearching(true);
+    try {
+      const q = query + (type ? ` ${type}` : "");
+      const res = await placesService.search(q, "tourist_attraction");
+      if (res.success && res.data?.places) {
+        setPlacesResults(res.data.places);
+      } else {
+        setPlacesResults([]);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Failed to search places", "error");
+    } finally {
+      setIsPlacesSearching(false);
+    }
+  };
+
 
   useEffect(() => {
     if (initialQuery) setSearchQuery(initialQuery);
   }, [initialQuery]);
 
+  useEffect(() => {
+    async function fetchCatalog() {
+      setIsLoading(true);
+      try {
+        const [destsRes, actsRes, tripsRes] = await Promise.all([
+          destinationService.search({ query: searchQuery || undefined, limit: 50 }),
+          activityService.search({
+            query: searchQuery || undefined,
+            category: selectedCategory !== "all" ? selectedCategory : undefined,
+            limit: 50,
+          }),
+          tripService.list({ limit: 20 }),
+        ]);
+
+        if (destsRes.success && destsRes.data) {
+          const items = Array.isArray(destsRes.data)
+            ? destsRes.data
+            : (destsRes.data as any).items || [];
+          setDestinations(items);
+        }
+
+        if (actsRes.success && actsRes.data) {
+          const items = Array.isArray(actsRes.data)
+            ? actsRes.data
+            : (actsRes.data as any).items || [];
+          setActivities(items);
+        }
+
+        if (tripsRes.success && tripsRes.data) {
+          const items = Array.isArray(tripsRes.data)
+            ? tripsRes.data
+            : (tripsRes.data as any).items || [];
+          setUserTrips(items);
+        }
+      } catch (err) {
+        console.error("Failed to load explore catalog:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    const timer = setTimeout(() => {
+      fetchCatalog();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedCategory]);
+
   const tabs = [
-    { id: "all", label: "All Catalog", count: mockDestinations.length + mockActivities.length },
-    { id: "map", label: "Interactive Map", count: mockDestinations.length, icon: <MapPin className="w-4 h-4" /> },
-    { id: "destinations", label: "Destinations & Cities", count: mockDestinations.length },
-    { id: "activities", label: "Activities & Tours", count: mockActivities.length },
+    { id: "all", label: "All Catalog", count: destinations.length + activities.length },
+    { id: "map", label: "Interactive Map", count: destinations.length, icon: <MapPin className="w-4 h-4" /> },
+    { id: "destinations", label: "Destinations & Cities", count: destinations.length },
+    { id: "activities", label: "Activities & Tours", count: activities.length },
+    { id: "google_places", label: "Global Discovery (Google)", count: placesResults.length, icon: <Globe2 className="w-4 h-4" /> },
   ];
 
-  // Filtering Destinations
-  const filteredDestinations = mockDestinations.filter((d) => {
-    if (activeTab === "activities") return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        d.name.toLowerCase().includes(q) ||
-        d.city.toLowerCase().includes(q) ||
-        d.region.toLowerCase().includes(q) ||
-        d.country.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  // Filtering Activities
-  const filteredActivities = mockActivities.filter((a) => {
-    if (activeTab === "destinations") return false;
-    if (selectedCategory !== "all" && a.category.toLowerCase() !== selectedCategory.toLowerCase())
-      return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        a.name.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q) ||
-        a.category.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const filteredDestinations = activeTab === "activities" ? [] : destinations;
+  const filteredActivities = activeTab === "destinations" ? [] : activities;
 
   const handleAddActivityToTrip = (act: Activity) => {
     setSelectedActivity(act);
     setIsAddToTripOpen(true);
   };
 
-  const handleConfirmAddToTrip = (tripTitle: string) => {
-    setIsAddToTripOpen(false);
-    showToast(`"${selectedActivity?.name}" added to "${tripTitle}"!`, "success");
+  const handleConfirmAddToTrip = async (trip: Trip) => {
+    if (!selectedActivity) return;
+    try {
+      if (trip.stops && trip.stops.length > 0) {
+        await tripService.addActivity(trip.stops[0].id, {
+          title: selectedActivity.name,
+          date: trip.start_date,
+          start_time: "10:00",
+          end_time: "13:00",
+          estimated_cost: selectedActivity.estimated_cost || 0,
+          order: 99,
+          notes: selectedActivity.description,
+        });
+        showToast(`"${selectedActivity.name}" added to "${trip.title}"!`, "success");
+      } else {
+        showToast("Please add at least one stop to that trip first.", "error");
+      }
+    } catch {
+      showToast("Failed to attach activity to trip.", "error");
+    } finally {
+      setIsAddToTripOpen(false);
+    }
   };
 
   return (
@@ -160,7 +248,7 @@ function ExploreContent() {
       )}
 
       {/* ─── Destinations Section (Wireframe Option & Details cards) ─── */}
-      {activeTab !== "activities" && activeTab !== "map" && filteredDestinations.length > 0 && (
+      {activeTab !== "activities" && activeTab !== "map" && activeTab !== "google_places" && filteredDestinations.length > 0 && (
         <div className="flex flex-col gap-4">
           <h3 className="font-display font-extrabold text-lg uppercase tracking-wide text-neutral-800 flex items-center gap-2">
             <Globe2 className="w-5 h-5 text-[#D94B3D]" />
@@ -212,7 +300,7 @@ function ExploreContent() {
       )}
 
       {/* ─── Activities Section (Wireframe Option and its details) ─── */}
-      {activeTab !== "destinations" && filteredActivities.length > 0 && (
+      {activeTab !== "destinations" && activeTab !== "google_places" && filteredActivities.length > 0 && (
         <div className="flex flex-col gap-4 mt-4">
           <h3 className="font-display font-extrabold text-lg uppercase tracking-wide text-neutral-800 flex items-center gap-2">
             <Compass className="w-5 h-5 text-[#FFB347]" />
@@ -279,6 +367,107 @@ function ExploreContent() {
         </div>
       )}
 
+
+      {/* ─── Google Places Discovery Tab ─── */}
+      {activeTab === "google_places" && (
+        <div className="flex flex-col gap-6 mt-4">
+          <div className="flex flex-col md:flex-row items-start gap-4">
+            <div className="relative flex-1 w-full">
+              <SearchBar
+                value={placesQuery}
+                onChange={setPlacesQuery}
+                placeholder="Search any global city or region (e.g., Mumbai, Paris)..."
+              />
+              {placesSuggestions.length > 0 && (
+                <div className="absolute z-10 w-full mt-2 bg-white border-2 border-[#111] rounded-xl shadow-[4px_4px_0px_#111]">
+                  {placesSuggestions.map(s => (
+                    <button
+                      key={s.place_id}
+                      className="w-full text-left px-4 py-3 border-b border-neutral-100 hover:bg-[#FFFAF3] transition-colors"
+                      onClick={() => {
+                        setPlacesQuery(s.description);
+                        setPlacesSuggestions([]);
+                        handleSearchPlaces(s.description, placesCategory);
+                      }}
+                    >
+                      <span className="font-bold text-[#111] block">{s.structured_formatting.main_text}</span>
+                      <span className="text-xs text-neutral-500">{s.structured_formatting.secondary_text}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Dropdown
+              value={placesCategory}
+              onChange={(val) => {
+                setPlacesCategory(val);
+                if (placesQuery) handleSearchPlaces(placesQuery, val);
+              }}
+              options={[
+                { value: "", label: "All Attractions" },
+                { value: "Adventure", label: "🏔️ Adventure" },
+                { value: "Nature", label: "🌿 Nature" },
+                { value: "Historical", label: "🏛️ Historical" },
+                { value: "Beaches", label: "🏖️ Beaches" },
+                { value: "Religious", label: "🛕 Religious" },
+                { value: "Food", label: "🍴 Food" },
+                { value: "Shopping", label: "🛍️ Shopping" },
+              ]}
+            />
+          </div>
+
+          {isPlacesSearching ? (
+            <div className="text-center py-12 font-bold text-neutral-500">Searching Google Places...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {placesResults.map((place) => (
+                <NeoCard key={place.id} interactive className="p-0 overflow-hidden flex flex-col justify-between">
+                  <div className="relative h-44 w-full border-b-[3px] border-[#111111] bg-neutral-100 flex items-center justify-center">
+                    {place.photos && place.photos.length > 0 ? (
+                      <img
+                        src={`https://places.googleapis.com/v1/${place.photos[0].name}/media?maxHeightPx=400&maxWidthPx=400&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}`}
+                        alt={place.displayName.text}
+                        className="object-cover w-full h-full"
+                      />
+                    ) : (
+                      <Globe2 className="w-12 h-12 text-neutral-300" />
+                    )}
+                    {place.rating && (
+                      <span className="absolute top-3 right-3 text-xs font-extrabold flex items-center gap-1 px-2.5 py-1 bg-[#FFD54A] border-2 border-[#111111] rounded-md shadow-[2px_2px_0px_#111111]">
+                        <Star className="w-3.5 h-3.5 fill-[#111]" />
+                        {place.rating} ({place.userRatingCount || 0})
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-5 flex flex-col flex-1 justify-between gap-3">
+                    <div>
+                      <h4 className="font-display font-extrabold text-xl text-[#111111]">
+                        {place.displayName.text}
+                      </h4>
+                      <span className="text-xs font-bold text-neutral-500 block mb-2 line-clamp-2">
+                        {place.formattedAddress}
+                      </span>
+                    </div>
+                    <div className="pt-3 border-t-2 border-neutral-100">
+                      <NeoButton variant="yellow" size="sm" leftIcon={<Plus className="w-4 h-4" />} onClick={() => handleAddActivityToTrip({
+                        id: place.id,
+                        name: place.displayName.text,
+                        description: place.formattedAddress,
+                        estimated_cost: 0,
+                        duration_hours: 2,
+                        category: placesCategory || "Attraction"
+                      } as Activity)}>
+                        Add to Trip
+                      </NeoButton>
+                    </div>
+                  </div>
+                </NeoCard>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Activity to Trip Modal */}
       {selectedActivity && (
         <Modal
@@ -294,25 +483,31 @@ function ExploreContent() {
             </p>
 
             <div className="flex flex-col gap-2">
-              {mockTrips.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => handleConfirmAddToTrip(t.title)}
-                  className="flex items-center justify-between p-3.5 bg-neutral-50 border-2 border-[#111111] rounded-xl hover:bg-[#FFD54A]/30 transition-colors text-left cursor-pointer"
-                >
-                  <div>
-                    <h5 className="font-display font-extrabold text-sm text-[#111111]">
-                      {t.title}
-                    </h5>
-                    <span className="text-xs text-neutral-600">
-                      {t.start_date} → {t.end_date} • {t.stops.length} stops
-                    </span>
-                  </div>
-                  <NeoButton variant="white" size="sm">
-                    Select
-                  </NeoButton>
-                </button>
-              ))}
+              {userTrips.length > 0 ? (
+                userTrips.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => handleConfirmAddToTrip(t)}
+                    className="flex items-center justify-between p-3.5 bg-neutral-50 border-2 border-[#111111] rounded-xl hover:bg-[#FFD54A]/30 transition-colors text-left cursor-pointer"
+                  >
+                    <div>
+                      <h5 className="font-display font-extrabold text-sm text-[#111111]">
+                        {t.title}
+                      </h5>
+                      <span className="text-xs text-neutral-600">
+                        {t.start_date} → {t.end_date} • {t.stops?.length || 0} stops
+                      </span>
+                    </div>
+                    <NeoButton variant="white" size="sm">
+                      Select
+                    </NeoButton>
+                  </button>
+                ))
+              ) : (
+                <div className="p-4 text-center text-xs text-neutral-500 font-bold">
+                  No expeditions found. Create a trip first!
+                </div>
+              )}
             </div>
           </div>
         </Modal>

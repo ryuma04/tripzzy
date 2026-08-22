@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Wallet,
   TrendingDown,
@@ -19,7 +19,7 @@ import { NeoPieChart } from "@/components/charts/neo-pie-chart";
 import { NeoBarChart } from "@/components/charts/neo-bar-chart";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { mockExpenses, mockBudgetSummary } from "@/data/mock";
+import { tripService } from "@/services/trips";
 import type { Trip, Expense, ExpenseCategory } from "@/types";
 
 interface BudgetOverviewProps {
@@ -28,88 +28,112 @@ interface BudgetOverviewProps {
 
 export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
   const { showToast } = useToast();
-  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Add Expense Modal State
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [expTitle, setExpTitle] = useState("");
   const [expAmount, setExpAmount] = useState(1200);
   const [expCategory, setExpCategory] = useState<ExpenseCategory>("food");
-  const [expDate, setExpDate] = useState("2026-09-12");
+  const [expDate, setExpDate] = useState(trip.start_date || "2026-10-12");
   const [expNotes, setExpNotes] = useState("");
+
+  useEffect(() => {
+    async function loadExpenses() {
+      setIsLoading(true);
+      try {
+        const res = await tripService.getExpenses(trip.id);
+        if (res.success && res.data) {
+          const items = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          setExpenses(items);
+        }
+      } catch (err) {
+        console.error("Failed to load expenses:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    if (trip.id) {
+      loadExpenses();
+    }
+  }, [trip.id]);
 
   const totalSpent = expenses.reduce((acc, curr) => acc + curr.amount, 0);
   const remainingBudget = Math.max(trip.budget - totalSpent, 0);
 
   // Breakdown calculations in Red & Cream Palette
-  const breakdownData = [
-    {
-      name: "Accommodation",
-      value: expenses
-        .filter((e) => e.category === "accommodation")
-        .reduce((acc, curr) => acc + curr.amount, 0) || 12100,
-      color: "#D94B3D",
-    },
-    {
-      name: "Transport",
-      value: expenses
-        .filter((e) => e.category === "transport")
-        .reduce((acc, curr) => acc + curr.amount, 0) || 6500,
-      color: "#A8322A",
-    },
-    {
-      name: "Activities",
-      value: expenses
-        .filter((e) => e.category === "activities")
-        .reduce((acc, curr) => acc + curr.amount, 0) || 6100,
-      color: "#F3B5A8",
-    },
-    {
-      name: "Meals & Food",
-      value: expenses
-        .filter((e) => e.category === "food")
-        .reduce((acc, curr) => acc + curr.amount, 0) || 5000,
-      color: "#E8D8C8",
-    },
-    {
-      name: "Miscellaneous",
-      value: expenses
-        .filter((e) => e.category === "miscellaneous" || e.category === "shopping")
-        .reduce((acc, curr) => acc + curr.amount, 0) || 1500,
-      color: "#171313",
-    },
-  ];
+  const categories: ExpenseCategory[] = ["accommodation", "transport", "activities", "food", "miscellaneous"];
+  const categoryNames: Record<string, string> = {
+    accommodation: "Accommodation",
+    transport: "Transport",
+    activities: "Activities",
+    food: "Meals & Food",
+    miscellaneous: "Miscellaneous",
+  };
+  const categoryColors: Record<string, string> = {
+    accommodation: "#D94B3D",
+    transport: "#A8322A",
+    activities: "#F3B5A8",
+    food: "#E8D8C8",
+    miscellaneous: "#171313",
+  };
+
+  const breakdownData = categories.map((cat) => ({
+    name: categoryNames[cat],
+    value: expenses
+      .filter((e) => e.category === cat)
+      .reduce((acc, curr) => acc + curr.amount, 0),
+    color: categoryColors[cat],
+  }));
 
   const barChartData = breakdownData.map((d) => ({
     name: d.name.split(" ")[0],
     value: d.value,
   }));
 
-  const handleAddExpense = (e: React.FormEvent) => {
+  const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!expTitle.trim() || expAmount <= 0) return;
 
-    const newExp: Expense = {
-      id: `exp_${Date.now()}`,
-      trip_id: trip.id,
-      category: expCategory,
-      title: expTitle,
-      amount: expAmount,
-      date: expDate,
-      notes: expNotes,
-      created_at: new Date().toISOString(),
-    };
+    try {
+      const res = await tripService.createExpense(trip.id, {
+        category: expCategory,
+        title: expTitle.trim(),
+        amount: Number(expAmount),
+        date: expDate,
+        notes: expNotes.trim() || undefined,
+      });
 
-    setExpenses([newExp, ...expenses]);
-    setIsAddExpenseOpen(false);
-    setExpTitle("");
-    setExpNotes("");
-    showToast(`Expense of ₹${expAmount} logged successfully!`, "success");
+      if (res.success && res.data) {
+        setExpenses([res.data, ...expenses]);
+        setIsAddExpenseOpen(false);
+        setExpTitle("");
+        setExpNotes("");
+        showToast(`Expense of ₹${expAmount} logged successfully!`, "success");
+      } else {
+        showToast(res.message || "Failed to log expense.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to log expense.", "error");
+    }
   };
 
-  const handleDeleteExpense = (id: string) => {
-    setExpenses(expenses.filter((e) => e.id !== id));
-    showToast("Expense entry deleted.", "info");
+  const handleDeleteExpense = async (id: string) => {
+    try {
+      const res = await tripService.deleteExpense(id);
+      if (res.success) {
+        setExpenses(expenses.filter((e) => e.id !== id));
+        showToast("Expense entry deleted.", "info");
+      } else {
+        showToast(res.message || "Failed to delete expense.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to delete expense.", "error");
+    }
   };
 
   return (

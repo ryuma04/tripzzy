@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -15,9 +15,22 @@ import { NeoCard } from "@/components/ui/neo-card";
 import { LandingNavbar } from "@/components/landing/landing-navbar";
 import { TravelMotionScene } from "@/components/landing/travel-motion-scene";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { mockDestinations } from "@/data/mock";
+import { destinationService } from "@/services/destinations";
+import type { Destination } from "@/types";
 
 export default function LandingPage() {
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+
+  useEffect(() => {
+    destinationService.search({ limit: 4 }).then((res) => {
+      if (res.success && res.data) {
+        const items = Array.isArray(res.data)
+          ? res.data
+          : (res.data as any).items || [];
+        setDestinations(items);
+      }
+    });
+  }, []);
   return (
     <div className="min-h-screen bg-[#FDF4EB] text-[#171313] flex flex-col selection:bg-[#D94B3D] selection:text-white">
       {/* ─── 🧭 TOP NAVIGATION (MATCHING REFERENCE EXACTLY) ─── */}
@@ -192,7 +205,7 @@ export default function LandingPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {mockDestinations.slice(0, 4).map((dest) => (
+          {destinations.slice(0, 4).map((dest) => (
             <NeoCard
               key={dest.id}
               interactive

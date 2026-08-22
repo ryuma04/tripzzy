@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,7 +11,7 @@ import {
   Users,
   Calendar as CalendarIcon,
   ShieldAlert,
-  User,
+  User as UserIcon,
   Settings,
   LogOut,
   Menu,
@@ -19,8 +19,8 @@ import {
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { mockCurrentUser } from "@/data/mock";
-import { logout } from "@/lib/auth";
+import { logout, getStoredUser, getCurrentUser } from "@/lib/auth";
+import type { User } from "@/types";
 
 interface NavItem {
   label: string;
@@ -40,8 +40,6 @@ const mainNavItems: NavItem[] = [
     label: "My Trips",
     href: "/trips",
     icon: <MapPin className="w-5 h-5" />,
-    badge: "3",
-    badgeColor: "bg-[#FFF5E9]",
   },
   {
     label: "Create Trip",
@@ -69,8 +67,6 @@ const mainNavItems: NavItem[] = [
     label: "Admin Panel",
     href: "/admin",
     icon: <ShieldAlert className="w-5 h-5" />,
-    badge: "PRO",
-    badgeColor: "bg-[#FCA5A5]",
   },
 ];
 
@@ -78,7 +74,7 @@ const secondaryNavItems: NavItem[] = [
   {
     label: "Profile",
     href: "/profile",
-    icon: <User className="w-5 h-5" />,
+    icon: <UserIcon className="w-5 h-5" />,
   },
   {
     label: "Settings",
@@ -90,6 +86,15 @@ const secondaryNavItems: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const pathname = usePathname() || "/dashboard";
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(getStoredUser());
+
+  useEffect(() => {
+    getCurrentUser().then((res) => {
+      if (res.success && res.data) {
+        setUser(res.data);
+      }
+    });
+  }, []);
 
   const isActive = (href: string) => {
     if (href === "/dashboard" && (pathname === "/" || pathname === "/dashboard")) return true;
@@ -198,16 +203,16 @@ export const Sidebar: React.FC = () => {
             className="flex items-center gap-2.5 truncate"
           >
             <Avatar
-              src={mockCurrentUser.avatar_url}
-              name={`${mockCurrentUser.first_name} ${mockCurrentUser.last_name}`}
+              src={user?.avatar_url}
+              name={user ? `${user.first_name} ${user.last_name}` : "Explorer"}
               size="sm"
             />
             <div className="truncate">
-              <div className="font-display font-extrabold text-xs text-[#171313] truncate leading-tight">
-                {mockCurrentUser.first_name} {mockCurrentUser.last_name}
+              <div suppressHydrationWarning className="font-display font-extrabold text-xs text-[#171313] truncate leading-tight">
+                {user ? `${user.first_name} ${user.last_name}` : "Explorer"}
               </div>
-              <div className="text-[10px] font-bold text-neutral-500 uppercase">
-                {mockCurrentUser.role}
+              <div suppressHydrationWarning className="text-[10px] font-bold text-neutral-500 uppercase">
+                {user?.role || "user"}
               </div>
             </div>
           </Link>

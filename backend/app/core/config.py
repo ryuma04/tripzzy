@@ -73,7 +73,10 @@ class Settings(BaseSettings):
     # --- AI itinerary generation, Groq (E2, phase P10) ---
     GROQ_API_KEY: str | None = None
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "qwen/qwen3.6-27b"
+
+    # --- Google Places API ---
+    GOOGLE_PLACES_API: str | None = None
 
     @field_validator("SECRET_KEY")
     @classmethod

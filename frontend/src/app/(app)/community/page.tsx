@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Users,
   Copy,
@@ -20,39 +20,105 @@ import { SearchBar } from "@/components/ui/search-bar";
 import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { mockCommunityTrips, mockCurrentUser } from "@/data/mock";
-import type { CommunityTrip } from "@/types";
+import { communityService } from "@/services/community";
+import type { CommunityTrip, Trip } from "@/types";
 
-export default function CommunityPage() {
+function CommunityContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const querySlug = searchParams?.get("slug");
   const { showToast } = useToast();
 
+  const [communityTrips, setCommunityTrips] = useState<CommunityTrip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPreviewTrip, setSelectedPreviewTrip] = useState<CommunityTrip | null>(null);
   const [isCloning, setIsCloning] = useState(false);
 
-  const filteredCommunityTrips = mockCommunityTrips.filter((t) => {
+  useEffect(() => {
+    async function loadCommunityFeed() {
+      setIsLoading(true);
+      try {
+        const res = await communityService.getTrips(1, 30);
+        if (res.success && res.data) {
+          const items = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          setCommunityTrips(items);
+        }
+      } catch (err) {
+        console.error("Failed to load community trips:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadCommunityFeed();
+  }, []);
+
+  // Handle direct shared URL link preview (?slug=...)
+  useEffect(() => {
+    if (querySlug) {
+      communityService.getPublicTrip(querySlug).then((res) => {
+        if (res.success && res.data) {
+          const t = res.data;
+          const commTrip: CommunityTrip = {
+            id: t.id,
+            share_slug: t.share_slug || querySlug,
+            title: t.title,
+            description: t.description,
+            start_date: t.start_date,
+            end_date: t.end_date,
+            duration_days: Math.max(1, Math.ceil((new Date(t.end_date).getTime() - new Date(t.start_date).getTime()) / (1000 * 3600 * 24))),
+            budget: t.budget,
+            estimated_cost: t.budget || 0,
+            traveller_count: t.traveller_count,
+            currency: "INR",
+            cover_image_url: t.cover_image,
+            stop_count: t.stops?.length || 0,
+            activity_count: t.stops?.reduce((acc: number, s: any) => acc + (s.activities?.length || 0), 0) || 0,
+            cities: t.stops?.map((s) => s.destination?.city || s.destination?.name || "Stop") || [],
+            owner: {
+              id: t.owner?.id || "00000000-0000-0000-0000-000000000000",
+              first_name: t.owner?.first_name || "Community",
+              last_name: t.owner?.last_name || "Explorer",
+              avatar_url: t.owner?.avatar_url,
+            },
+            created_at: t.created_at,
+          };
+          setSelectedPreviewTrip(commTrip);
+        }
+      });
+    }
+  }, [querySlug]);
+
+  const filteredCommunityTrips = communityTrips.filter((t) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
       t.title.toLowerCase().includes(q) ||
-      t.destinations.some((d) => d.toLowerCase().includes(q)) ||
-      `${t.creator.first_name} ${t.creator.last_name}`.toLowerCase().includes(q)
+      t.cities?.some((d: string) => d.toLowerCase().includes(q)) ||
+      `${t.owner?.first_name} ${t.owner?.last_name}`.toLowerCase().includes(q)
     );
   });
 
   const handleCloneTrip = async (trip: CommunityTrip) => {
     setIsCloning(true);
     try {
-      await new Promise((res) => setTimeout(res, 700));
-      showToast(
-        `Cloned "${trip.title}" into your personal trips as an editable copy!`,
-        "success"
-      );
-      setSelectedPreviewTrip(null);
-      router.push("/trips");
-    } catch {
-      showToast("Failed to clone itinerary.", "error");
+      const slug = trip.share_slug || trip.id;
+      const res = await communityService.cloneTrip(slug);
+      if (res.success && res.data) {
+        showToast(
+          `Cloned "${trip.title}" into your expeditions as an editable trip!`,
+          "success"
+        );
+        setSelectedPreviewTrip(null);
+        router.push(`/trips/${res.data.id}`);
+      } else {
+        showToast(res.message || "Failed to clone itinerary.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to clone itinerary.", "error");
     } finally {
       setIsCloning(false);
     }
@@ -91,13 +157,13 @@ export default function CommunityPage() {
               <div className="flex items-center justify-between pb-3 border-b-2 border-neutral-100 mb-3">
                 <div className="flex items-center gap-2.5">
                   <Avatar
-                    src={trip.creator.avatar_url}
-                    name={`${trip.creator.first_name} ${trip.creator.last_name}`}
+                    src={trip.owner?.avatar_url}
+                    name={`${trip.owner?.first_name || 'Anonymous'} ${trip.owner?.last_name || ''}`}
                     size="sm"
                   />
                   <div>
                     <h5 className="font-display font-extrabold text-xs text-[#111111]">
-                      {trip.creator.first_name} {trip.creator.last_name}
+                      {trip.owner?.first_name || 'Anonymous'} {trip.owner?.last_name || ''}
                     </h5>
                     <span className="text-[10px] text-neutral-500 font-medium">
                       Published {new Date(trip.created_at).toLocaleDateString()}
@@ -117,7 +183,7 @@ export default function CommunityPage() {
 
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#4F7DF9] mb-4">
                 <MapPin className="w-3.5 h-3.5" />
-                <span>{trip.destinations.join(" → ")}</span>
+                <span>{(trip.cities || []).join(" → ") || "No route specified"}</span>
               </div>
 
               {/* Meta Badges */}
@@ -165,14 +231,14 @@ export default function CommunityPage() {
           isOpen={!!selectedPreviewTrip}
           onClose={() => setSelectedPreviewTrip(null)}
           title={selectedPreviewTrip.title}
-          subtitle={`Published by ${selectedPreviewTrip.creator.first_name} ${selectedPreviewTrip.creator.last_name}`}
+          subtitle={`Published by ${selectedPreviewTrip.owner?.first_name} ${selectedPreviewTrip.owner?.last_name}`}
           maxWidth="lg"
         >
           <div className="flex flex-col gap-5">
             <div className="p-4 bg-neutral-50 border-2 border-[#111111] rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs font-bold">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-[#4F7DF9]" />
-                <span>Stops: {selectedPreviewTrip.destinations.join(" → ")}</span>
+                <span>Stops: {(selectedPreviewTrip.cities || []).join(" → ")}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
@@ -221,5 +287,13 @@ export default function CommunityPage() {
         </Modal>
       )}
     </div>
+  );
+}
+
+export default function CommunityPage() {
+  return (
+    <Suspense fallback={<div className="p-8 font-display font-bold">Loading community feed...</div>}>
+      <CommunityContent />
+    </Suspense>
   );
 }

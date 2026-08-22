@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  User,
+  User as UserIcon,
   Mail,
   Phone,
   MapPin,
@@ -16,6 +16,7 @@ import {
   Compass,
   ArrowRight,
   Eye,
+  Upload,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -24,31 +25,120 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { mockCurrentUser, mockTrips } from "@/data/mock";
+import { userService } from "@/services/users";
+import { tripService } from "@/services/trips";
+import { uploadAvatar, getCurrentUser } from "@/lib/auth";
+import type { User, Trip } from "@/types";
 
 export default function ProfilePage() {
   const { showToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState({
-    first_name: mockCurrentUser.first_name,
-    last_name: mockCurrentUser.last_name,
-    email: mockCurrentUser.email,
-    phone: mockCurrentUser.phone,
-    city: mockCurrentUser.city,
-    country: mockCurrentUser.country,
-    additional_info: mockCurrentUser.additional_info || "",
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    city: "",
+    country: "",
+    additional_info: "",
   });
 
-  const preplannedTrips = mockTrips.filter(
-    (t) => t.status === "upcoming" || t.status === "draft"
-  );
-  const previousTrips = mockTrips.filter((t) => t.status === "completed");
+  useEffect(() => {
+    async function loadProfile() {
+      setIsLoading(true);
+      try {
+        const [userRes, tripsRes] = await Promise.all([
+          getCurrentUser(),
+          tripService.list({ limit: 50 }),
+        ]);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+        if (userRes.success && userRes.data) {
+          const u = userRes.data;
+          setUser(u);
+          setFormData({
+            first_name: u.first_name || "",
+            last_name: u.last_name || "",
+            email: u.email || "",
+            phone: u.phone || "",
+            city: u.city || "",
+            country: u.country || "",
+            additional_info: u.additional_info || "",
+          });
+        }
+
+        if (tripsRes.success && tripsRes.data) {
+          const items = Array.isArray(tripsRes.data)
+            ? tripsRes.data
+            : (tripsRes.data as any).items || [];
+          setTrips(items);
+        }
+      } catch (err) {
+        console.error("Failed to load profile details:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadProfile();
+  }, []);
+
+  const preplannedTrips = trips.filter(
+    (t) => t.status === "upcoming" || t.status === "ongoing" || t.status === "draft"
+  );
+  const previousTrips = trips.filter((t) => t.status === "completed");
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      showToast("Uploading avatar to ImageKit...", "info");
+      const res = await uploadAvatar(file);
+      if (res.success && res.data) {
+        if (res.data.user) {
+          setUser(res.data.user);
+        } else if (res.data.avatar_url) {
+          setUser((prev) => (prev ? { ...prev, avatar_url: res.data!.avatar_url } : null));
+        }
+        showToast("Profile avatar photo updated!", "success");
+      } else {
+        showToast(res.message || "Failed to update avatar photo.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to upload avatar.", "error");
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsEditing(false);
-    showToast("Profile details updated successfully!", "success");
+    setIsSaving(true);
+    try {
+      const res = await userService.updateProfile({
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        phone: formData.phone,
+        city: formData.city,
+        country: formData.country,
+        additional_info: formData.additional_info,
+      });
+
+      if (res.success && res.data) {
+        setUser(res.data);
+        setIsEditing(false);
+        showToast("Profile details updated successfully!", "success");
+      } else {
+        showToast(res.message || "Failed to update profile.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to update profile.", "error");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -68,16 +158,22 @@ export default function ProfilePage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
             <div className="relative">
               <Avatar
-                src={mockCurrentUser.avatar_url}
+                src={user?.avatar_url}
                 name={`${formData.first_name} ${formData.last_name}`}
                 size="xl"
               />
-              <button
-                title="Change Photo"
+              <label
+                title="Change Avatar Photo"
                 className="absolute bottom-0 right-0 p-2 rounded-xl bg-[#D94B3D] text-white border-2 border-[#171313] shadow-[2px_2px_0px_#171313] hover:bg-[#A8322A] cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
-              </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             <div>
@@ -85,11 +181,11 @@ export default function ProfilePage() {
                 <h2 className="font-display font-extrabold text-2xl text-[#171313]">
                   {formData.first_name} {formData.last_name}
                 </h2>
-                <Badge variant="red">{mockCurrentUser.role}</Badge>
+                <Badge variant="red">{user?.role || "user"}</Badge>
               </div>
 
               <p className="text-xs font-semibold text-neutral-600 max-w-md">
-                {formData.additional_info}
+                {formData.additional_info || "Passionate explorer and multi-city traveler."}
               </p>
 
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs font-bold text-neutral-700 mt-3">

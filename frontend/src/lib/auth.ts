@@ -240,14 +240,17 @@ export function isAuthenticated(): boolean {
  * React hook to listen to real-time auth and role changes
  */
 export function useAuthUser() {
-  const [user, setUser] = useState<User>(() => getStoredUser());
+  // Initialize with mockCurrentUser to ensure server and client match during hydration
+  const [user, setUser] = useState<User>(mockCurrentUser);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const handleAuthChange = () => {
       setUser(getStoredUser());
     };
 
-    // Sync on mount
+    // Sync real data on mount
     setUser(getStoredUser());
 
     window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChange);
@@ -265,5 +268,6 @@ export function useAuthUser() {
     isUser: user.role === "user",
     setRole: setStoredUserRole,
     updateUser: updateStoredUser,
+    isMounted: mounted,
   };
 }

@@ -101,14 +101,21 @@ Make sure the dates fit between {start_date} and {end_date}. Provide realistic c
                 
                 content = data["choices"][0]["message"]["content"]
                 
-                # Sometime models wrap JSON in markdown block even when instructed not to or using json_object
                 content = content.strip()
-                if content.startswith("```json"):
-                    content = content[7:-3]
-                elif content.startswith("```"):
-                    content = content[3:-3]
+                
+                # Sometime models wrap JSON in markdown block even when instructed not to
+                import re
+                match = re.search(r'```(?:json)?\s*(.*?)\s*```', content, re.DOTALL)
+                if match:
+                    content = match.group(1).strip()
+                else:
+                    # Fallback to finding the first { and last }
+                    start = content.find('{')
+                    end = content.rfind('}')
+                    if start != -1 and end != -1:
+                        content = content[start:end+1]
                     
-                result = json.loads(content.strip())
+                result = json.loads(content)
                 return result
                 
         except httpx.HTTPStatusError as e:

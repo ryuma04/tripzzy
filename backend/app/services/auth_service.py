@@ -78,18 +78,19 @@ class AuthService:
                 details={"fields": {"email": "This email is already registered"}},
             ) from exc
 
+        # Only send a code when verification actually gates sign-in. Sending
+        # one just because SMTP happens to be configured would make every
+        # registration wait on an SMTP round-trip for no benefit.
         debug_code: str | None = None
-        if settings.REQUIRE_EMAIL_VERIFICATION or EmailService.is_available():
+        if settings.REQUIRE_EMAIL_VERIFICATION:
             try:
                 debug_code = await OTPService.issue(self.db, user)
-            except Exception as exc:
-                # Delivery failed. If verification is mandatory the account is
-                # unusable, so fail the whole registration rather than stranding
-                # the user; otherwise the account is fine without it.
-                if settings.REQUIRE_EMAIL_VERIFICATION:
-                    await self.db.rollback()
-                    raise
-                logger.warning("Verification email skipped for %s: %s", user.email, exc)
+            except Exception:
+                # Verification is mandatory here, so an undeliverable code
+                # means an unusable account: fail the whole registration
+                # rather than stranding the user with no way in.
+                await self.db.rollback()
+                raise
 
         await self.db.commit()
         await self.db.refresh(user)

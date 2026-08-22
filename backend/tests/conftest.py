@@ -19,6 +19,12 @@ os.environ["DATABASE_URL"] = (
 )
 os.environ["REQUIRE_EMAIL_VERIFICATION"] = "false"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
+# Blank the SMTP credentials that .env supplies, so the suite can never send
+# a real email. Without this, every registration test would try to reach
+# Gmail and the run would crawl.
+os.environ["SMTP_SERVER"] = ""
+os.environ["SMTP_USERNAME"] = ""
+os.environ["SMTP_PASSWORD"] = ""
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "false"
 os.environ.setdefault(

@@ -1,3 +1,5 @@
+"use client";
+
 // ═══════════════════════════════════════════
 // TRIPZYY — Auth Service
 // Login, register, OTP verification, avatar upload, logout, current user & role management

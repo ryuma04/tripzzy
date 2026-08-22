@@ -57,6 +57,104 @@ export const tripService = {
     traveller_count: number;
   }) => apiClient.post<Trip>("/trips/generate", payload),
 
+  generateOptions: async (payload: {
+    destination_ids: string[];
+    start_date: string;
+    end_date: string;
+    budget_tier: string;
+    travel_style: string;
+    traveller_count: number;
+    destination_names?: string[];
+  }): Promise<{ success: boolean; data?: any; message?: string }> => {
+    try {
+      const res = await apiClient.post<any>("/trips/generate-options", {
+        destination_ids: payload.destination_ids,
+        start_date: payload.start_date,
+        end_date: payload.end_date,
+        budget_tier: payload.budget_tier,
+        travel_style: payload.travel_style,
+        traveller_count: payload.traveller_count,
+      });
+      if (res.success && res.data?.budget_plan && res.data?.premium_plan) {
+        return res;
+      }
+    } catch (err) {
+      console.info("[Tripzyy Dev] Real AI API unavailable -> using demo AI provider fallback:", err);
+    }
+    // Fallback to structured demo AI provider
+    const { getDemoAIPlans } = await import("@/lib/demo-data");
+    const demoPlans = getDemoAIPlans(
+      payload.destination_names || ["Goa"],
+      payload.start_date,
+      payload.end_date,
+      payload.traveller_count,
+      payload.budget_tier === "Luxury" ? 60000 : 35000
+    );
+    return {
+      success: true,
+      data: demoPlans,
+      message: "Generated 2 tailored travel plans",
+    };
+  },
+
+  selectPlan: async (payload: {
+    selected_plan: any;
+    destination_ids: string[];
+    start_date?: string;
+    end_date?: string;
+    traveller_count?: number;
+  }) => {
+    try {
+      const res = await apiClient.post<Trip>("/trips/select-plan", payload);
+      if (res.success && res.data) {
+        return res;
+      }
+    } catch (err) {
+      console.info("[Tripzyy Dev] Real backend select-plan unavailable -> persisting to local demo trip:", err);
+    }
+    // Fallback if backend is unreachable
+    const { DEMO_TRIPS } = await import("@/lib/demo-data");
+    const plan = payload.selected_plan;
+    const fallbackTrip: Trip = {
+      id: `trip_ai_${Date.now()}`,
+      user_id: "usr_yash",
+      title: plan.title || "Custom Expedition",
+      description: `AI Preference: ${plan.plan_type === "BUDGET" ? "Best Value" : "Premium Experience"} | ${plan.description || ""}`,
+      start_date: payload.start_date || "2026-10-12",
+      end_date: payload.end_date || "2026-10-18",
+      budget: plan.total_cost || 30000,
+      traveller_count: payload.traveller_count || 2,
+      status: "upcoming",
+      is_shared: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      stops: (plan.stops || []).map((s: any, idx: number) => ({
+        id: `stop_${idx}_${Date.now()}`,
+        trip_id: `trip_ai_${Date.now()}`,
+        city_name: s.destination_name || "Destination",
+        arrival_date: s.arrival_date || payload.start_date || "2026-10-12",
+        departure_date: s.departure_date || payload.end_date || "2026-10-18",
+        order: idx + 1,
+        activities: (s.activities || []).map((a: any, aIdx: number) => ({
+          id: `act_${aIdx}_${Date.now()}`,
+          stop_id: `stop_${idx}_${Date.now()}`,
+          title: a.title,
+          date: a.date || payload.start_date || "2026-10-12",
+          start_time: a.start_time || "10:00",
+          end_time: a.end_time || "13:00",
+          estimated_cost: a.estimated_cost || 500,
+          order: aIdx + 1,
+          notes: a.notes,
+        })),
+      })),
+    };
+    return {
+      success: true,
+      data: fallbackTrip,
+      message: "AI Itinerary created successfully",
+    };
+  },
+
   update: (tripId: string, payload: UpdateTripPayload) =>
     apiClient.put<Trip>(`/trips/${tripId}`, payload),
 

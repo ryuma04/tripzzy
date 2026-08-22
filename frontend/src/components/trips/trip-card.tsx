@@ -10,6 +10,8 @@ import {
   Share2,
   ArrowRight,
   MoreVertical,
+  Download,
+  Sparkles,
 } from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
@@ -19,12 +21,14 @@ import type { Trip } from "@/types";
 interface TripCardProps {
   trip: Trip;
   onShare?: (trip: Trip) => void;
+  onDownloadReport?: (trip: Trip) => void;
   redShadow?: boolean;
 }
 
 export const TripCard: React.FC<TripCardProps> = ({
   trip,
   onShare,
+  onDownloadReport,
   redShadow = false,
 }) => {
   const cities = trip.stops?.map((s) => s.destination?.city || s.destination?.name) || [];
@@ -110,6 +114,17 @@ export const TripCard: React.FC<TripCardProps> = ({
                 Open Itinerary
               </NeoButton>
             </Link>
+
+            {onDownloadReport && (
+              <button
+                type="button"
+                onClick={() => onDownloadReport(trip)}
+                title="Download Trip Report PDF"
+                className="p-2 bg-[#FFD54A] hover:bg-[#ffe285] text-[#171313] border-[2px] border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
 
             {onShare && (
               <button

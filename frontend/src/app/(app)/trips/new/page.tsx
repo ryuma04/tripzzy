@@ -16,12 +16,14 @@ import {
   Sparkles,
   Compass,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
 import { NeoInput } from "@/components/ui/neo-input";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { TripMap } from "@/components/map";
 import { destinationService } from "@/services/destinations";
@@ -30,7 +32,7 @@ import { tripService } from "@/services/trips";
 import { SearchBar } from "@/components/ui/search-bar";
 import { placesService, PlaceSuggestion } from "@/services/places";
 import { resolvePlaceImageUrl } from "@/lib/place-images";
-import type { Destination, Activity } from "@/types";
+import type { Destination, Activity, AITravelPlan, AITwoOptionsResponse } from "@/types";
 
 
 function formatDuration(minutes?: number, hours?: number): string {
@@ -523,35 +525,72 @@ export default function CreateTripPage() {
   };
 
 
+  // AI Two Options State
+  const [aiOptions, setAiOptions] = useState<AITwoOptionsResponse | null>(null);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [inspectingPlan, setInspectingPlan] = useState<AITravelPlan | null>(null);
+  const [isSelectingPlan, setIsSelectingPlan] = useState(false);
+
   const handleGenerateAITrip = async () => {
     if (!title || !startDate || !endDate || selectedDestinations.length === 0) {
       showToast("Please fill all required fields and select at least one destination.", "error");
       return;
     }
 
-    setIsSubmitting(true);
+    setIsGeneratingAI(true);
+    setAiError(null);
+    setAiOptions(null);
     try {
-      showToast("AI Route Co-Pilot is generating your itinerary...", "success");
-      
-      const res = await tripService.generate({
-        destination_ids: selectedDestinations.map(d => d.id),
+      showToast("AI Route Co-Pilot is architecting two tailored itineraries...", "info");
+
+      const res = await tripService.generateOptions({
+        destination_ids: selectedDestinations.map((d) => d.id),
+        destination_names: selectedDestinations.map((d) => d.name),
         start_date: startDate,
         end_date: endDate,
         budget_tier: budget > 50000 ? "Luxury" : budget > 20000 ? "Moderate" : "Budget",
-        travel_style: selectedActivities.map(a => a.title || a.name).join(", ") || "General Sightseeing",
+        travel_style: selectedActivities.map((a) => a.title || a.name).join(", ") || "General Sightseeing",
         traveller_count: Number(travellerCount),
       });
 
-      if (!res.success || !res.data) {
-        throw new Error(res.message || "Failed to generate AI trip");
+      if (res.success && res.data?.budget_plan && res.data?.premium_plan) {
+        setAiOptions(res.data);
+        showToast("2 tailored travel plans ready for comparison!", "success");
+      } else {
+        throw new Error(res.message || "Failed to generate AI plans");
       }
-
-      showToast("AI Itinerary successfully generated!", "success");
-      router.push(`/trips/${res.data.id}`);
     } catch (err: any) {
+      console.error("AI Generation failed:", err);
+      setAiError(err.message || "AI Generation failed. Please try again.");
       showToast(err.message || "AI Generation failed. Please try again.", "error");
     } finally {
-      setIsSubmitting(false);
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleSelectAIPlan = async (plan: AITravelPlan) => {
+    setIsSelectingPlan(true);
+    try {
+      showToast(`Saving ${plan.badge} itinerary to workspace...`, "info");
+      const res = await tripService.selectPlan({
+        selected_plan: plan,
+        destination_ids: selectedDestinations.map((d) => d.id),
+        start_date: startDate,
+        end_date: endDate,
+        traveller_count: Number(travellerCount),
+      });
+
+      if (res.success && res.data) {
+        showToast("Expedition successfully initialized and saved!", "success");
+        router.push(`/trips/${res.data.id}`);
+      } else {
+        throw new Error(res.message || "Failed to persist trip");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to save selected plan.", "error");
+    } finally {
+      setIsSelectingPlan(false);
     }
   };
 
@@ -579,27 +618,30 @@ export default function CreateTripPage() {
           return (
             <div
               key={s.num}
-              className={`flex items-center gap-2.5 p-2.5 rounded-xl border-2 transition-all select-none ${
+              onClick={() => {
+                if (s.num < currentStep) setCurrentStep(s.num);
+              }}
+              className={`p-3 rounded-xl border-2 transition-all flex items-center gap-2.5 select-none ${
                 isCurrent
-                  ? "bg-[#D94B3D] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313] font-extrabold"
+                  ? "bg-[#FFD54A] border-[#171313] shadow-[2px_2px_0px_#171313] font-black"
                   : isDone
-                  ? "bg-[#5F8F6B] text-[#FFFFFF] border-[#171313] font-bold"
-                  : "bg-[#FFFAF3] border-neutral-300 text-neutral-500 font-medium"
+                  ? "bg-[#B7F4D8] border-[#171313] cursor-pointer"
+                  : "bg-neutral-100 border-neutral-300 text-neutral-400"
               }`}
             >
-              <div
-                className={`w-6 h-6 rounded-lg border border-[#171313] flex items-center justify-center text-xs font-display font-extrabold ${
+              <span
+                className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-black border ${
                   isCurrent
-                    ? "bg-[#171313] text-[#FFF4E6]"
+                    ? "bg-[#171313] text-white border-[#171313]"
                     : isDone
-                    ? "bg-[#171313] text-[#FFF4E6]"
-                    : "bg-white text-neutral-500"
+                    ? "bg-[#107038] text-white border-[#171313]"
+                    : "bg-white text-neutral-400 border-neutral-300"
                 }`}
               >
-                {isDone ? <Check className="w-3.5 h-3.5" /> : s.num}
-              </div>
-              <span className="text-xs font-display tracking-tight truncate">
-                {s.label}
+                {isDone ? "✓" : s.num}
+              </span>
+              <span className="text-xs font-display font-extrabold uppercase tracking-wide truncate">
+                {s.label.split("— ")[1]}
               </span>
             </div>
           );
@@ -996,12 +1038,13 @@ export default function CreateTripPage() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
+            className="flex flex-col gap-6"
           >
             <NeoCard className="p-6 md:p-8 flex flex-col gap-6">
               <div className="flex items-center gap-2 pb-4 border-b-2 border-[#111111]">
-                <Check className="w-5 h-5 text-[#6EE7B7]" />
+                <Check className="w-5 h-5 text-[#107038]" />
                 <h3 className="font-display font-extrabold text-xl text-[#111111]">
-                  Step 4: Review Trip Summary
+                  Step 4: Review Trip Summary & AI Planner
                 </h3>
               </div>
 
@@ -1040,20 +1083,240 @@ export default function CreateTripPage() {
                 </h4>
                 <div className="p-4 bg-[#FFD54A]/20 border-2 border-[#111111] rounded-xl flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-xs font-bold">
-                    <MapPin className="w-4 h-4" />
+                    <MapPin className="w-4 h-4 text-[#D94B3D]" />
                     <span>Stops: {selectedDestinations.map((d) => d.name).join(" → ")}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs font-bold">
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="w-4 h-4 text-[#FFB347]" />
                     <span>
                       Activities Selected: {selectedActivities.length > 0
                         ? selectedActivities.map((a) => a.title || a.name).join(", ")
-                        : "None selected"}
+                        : "None selected (AI Co-Pilot will suggest best activities)"}
                     </span>
                   </div>
                 </div>
               </div>
             </NeoCard>
+
+            {/* ─── AI Two-Options Generation Banner / Results ─── */}
+            {isGeneratingAI && (
+              <NeoCard className="p-8 border-[3px] border-[#171313] bg-[#FFF8EE] shadow-[6px_6px_0px_#171313] flex flex-col items-center justify-center text-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-[#FFD54A] border-[3px] border-[#171313] flex items-center justify-center animate-spin shadow-[3px_3px_0px_#171313]">
+                  <Sparkles className="w-6 h-6 text-[#171313]" />
+                </div>
+                <div>
+                  <h4 className="font-display font-black text-xl text-[#171313]">
+                    Generating your 2 Tripzyy travel plans...
+                  </h4>
+                  <p className="text-xs font-semibold text-neutral-600 max-w-md mt-1">
+                    AI Co-Pilot is architecting two tailored options: Option #1 (💰 Best Value) and Option #2 (✨ Premium Experience).
+                  </p>
+                </div>
+              </NeoCard>
+            )}
+
+            {aiError && (
+              <NeoCard className="p-6 border-[3px] border-[#D94B3D] bg-[#FFEBEA] shadow-[4px_4px_0px_#D94B3D] flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#D94B3D] text-white border-2 border-[#171313] flex items-center justify-center font-black">
+                    !
+                  </div>
+                  <div>
+                    <h5 className="font-display font-bold text-sm text-[#171313]">AI Generation Notice</h5>
+                    <p className="text-xs text-neutral-700">{aiError}</p>
+                  </div>
+                </div>
+                <NeoButton variant="primary" size="sm" onClick={handleGenerateAITrip}>
+                  Try Again
+                </NeoButton>
+              </NeoCard>
+            )}
+
+            {aiOptions && !isGeneratingAI && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-display font-black text-2xl text-[#171313]">
+                      Compare AI Travel Options
+                    </h3>
+                    <p className="text-xs font-semibold text-neutral-600">
+                      Choose the plan that fits your travel style best. Clicking &quot;Select&quot; will create your active workspace itinerary.
+                    </p>
+                  </div>
+                  <NeoButton
+                    variant="white"
+                    size="sm"
+                    onClick={handleGenerateAITrip}
+                    leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                  >
+                    Regenerate
+                  </NeoButton>
+                </div>
+
+                {/* Side-by-Side 2 Comparison Cards (Matching Prompt Spec 4 & 5 & 6) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* OPTION 1: 💰 BUDGET SMART / BEST VALUE */}
+                  <div className="p-6 rounded-2xl border-[3.5px] border-[#171313] bg-[#FFFFFF] shadow-[6px_6px_0px_#107038] flex flex-col justify-between transition-transform hover:-translate-y-1">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center justify-between pb-3 border-b-2 border-[#171313]">
+                        <span className="px-3 py-1 bg-[#B7F4D8] text-[#107038] border-2 border-[#171313] rounded-lg font-display font-black text-xs uppercase shadow-[2px_2px_0px_#171313]">
+                          💰 BEST VALUE
+                        </span>
+                        <span className="text-xs font-extrabold uppercase text-neutral-600">
+                          {aiOptions.budget_plan.duration_days} DAYS
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="font-display font-black text-3xl text-[#171313]">
+                          ₹{aiOptions.budget_plan.total_cost.toLocaleString("en-IN")}
+                        </div>
+                        <h4 className="font-display font-extrabold text-base text-[#171313] mt-1 leading-snug">
+                          {aiOptions.budget_plan.title}
+                        </h4>
+                        <p className="text-xs text-neutral-600 font-medium mt-1">
+                          {aiOptions.budget_plan.description}
+                        </p>
+                      </div>
+
+                      {/* Cost Breakdown Table */}
+                      <div className="p-3 bg-neutral-50 border-2 border-[#171313] rounded-xl flex flex-col gap-2 text-xs">
+                        <span className="font-display font-extrabold text-[11px] uppercase tracking-wider text-neutral-500">
+                          Estimated Cost Breakdown:
+                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Hotel / Stays:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.budget_plan.cost_breakdown.accommodation.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Transport:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.budget_plan.cost_breakdown.transport.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Activities & Tours:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.budget_plan.cost_breakdown.activities.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Food & Dining:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.budget_plan.cost_breakdown.food.toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+
+                      {/* Key Value Proposition */}
+                      <div className="p-3 bg-[#EAF7EE] border-2 border-[#107038] rounded-xl text-xs flex flex-col gap-1">
+                        <span className="font-display font-black text-[11px] text-[#107038] uppercase">
+                          ✓ Why this plan is cheaper:
+                        </span>
+                        <p className="text-neutral-700 font-medium leading-relaxed">
+                          {aiOptions.budget_plan.why_cheaper || aiOptions.budget_plan.advantages}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-6 border-t-2 border-[#171313] mt-4">
+                      <NeoButton
+                        variant="white"
+                        size="md"
+                        className="flex-1"
+                        onClick={() => setInspectingPlan(aiOptions.budget_plan)}
+                      >
+                        View Plan
+                      </NeoButton>
+                      <NeoButton
+                        variant="primary"
+                        size="md"
+                        className="flex-1 bg-[#107038] text-white hover:bg-[#0d592d]"
+                        onClick={() => handleSelectAIPlan(aiOptions.budget_plan)}
+                        isLoading={isSelectingPlan}
+                        rightIcon={<ArrowRight className="w-4 h-4" />}
+                      >
+                        Select This Plan
+                      </NeoButton>
+                    </div>
+                  </div>
+
+                  {/* OPTION 2: ✨ PREMIUM EXPERIENCE / BEST EXPERIENCE */}
+                  <div className="p-6 rounded-2xl border-[3.5px] border-[#171313] bg-[#FFFFFF] shadow-[6px_6px_0px_#FFD54A] flex flex-col justify-between transition-transform hover:-translate-y-1">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center justify-between pb-3 border-b-2 border-[#171313]">
+                        <span className="px-3 py-1 bg-[#FFD54A] text-[#171313] border-2 border-[#171313] rounded-lg font-display font-black text-xs uppercase shadow-[2px_2px_0px_#171313]">
+                          ✨ PREMIUM EXPERIENCE
+                        </span>
+                        <span className="text-xs font-extrabold uppercase text-neutral-600">
+                          {aiOptions.premium_plan.duration_days} DAYS
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="font-display font-black text-3xl text-[#171313]">
+                          ₹{aiOptions.premium_plan.total_cost.toLocaleString("en-IN")}
+                        </div>
+                        <h4 className="font-display font-extrabold text-base text-[#171313] mt-1 leading-snug">
+                          {aiOptions.premium_plan.title}
+                        </h4>
+                        <p className="text-xs text-neutral-600 font-medium mt-1">
+                          {aiOptions.premium_plan.description}
+                        </p>
+                      </div>
+
+                      {/* Cost Breakdown Table */}
+                      <div className="p-3 bg-neutral-50 border-2 border-[#171313] rounded-xl flex flex-col gap-2 text-xs">
+                        <span className="font-display font-extrabold text-[11px] uppercase tracking-wider text-neutral-500">
+                          Estimated Cost Breakdown:
+                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Premium Hotel / Resort:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.premium_plan.cost_breakdown.accommodation.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Private Transport:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.premium_plan.cost_breakdown.transport.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">VIP Activities & Passes:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.premium_plan.cost_breakdown.activities.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700">Fine Dining & Tastings:</span>
+                          <span className="font-extrabold font-mono">₹{aiOptions.premium_plan.cost_breakdown.food.toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+
+                      {/* Key Value Proposition */}
+                      <div className="p-3 bg-[#FFF9E6] border-2 border-[#B28900] rounded-xl text-xs flex flex-col gap-1">
+                        <span className="font-display font-black text-[11px] text-[#B28900] uppercase">
+                          ★ Premium Perks & Advantages:
+                        </span>
+                        <p className="text-neutral-700 font-medium leading-relaxed">
+                          {aiOptions.premium_plan.why_more || aiOptions.premium_plan.advantages}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-6 border-t-2 border-[#171313] mt-4">
+                      <NeoButton
+                        variant="white"
+                        size="md"
+                        className="flex-1"
+                        onClick={() => setInspectingPlan(aiOptions.premium_plan)}
+                      >
+                        View Plan
+                      </NeoButton>
+                      <NeoButton
+                        variant="yellow"
+                        size="md"
+                        className="flex-1 font-black"
+                        onClick={() => handleSelectAIPlan(aiOptions.premium_plan)}
+                        isLoading={isSelectingPlan}
+                        rightIcon={<ArrowRight className="w-4 h-4" />}
+                      >
+                        Select This Plan
+                      </NeoButton>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1064,7 +1327,7 @@ export default function CreateTripPage() {
           variant="white"
           size="md"
           onClick={handleBack}
-          disabled={currentStep === 1 || isSubmitting}
+          disabled={currentStep === 1 || isSubmitting || isGeneratingAI}
           leftIcon={<ArrowLeft className="w-4 h-4" />}
         >
           Previous Step
@@ -1094,14 +1357,106 @@ export default function CreateTripPage() {
               variant="yellow"
               size="lg"
               onClick={handleGenerateAITrip}
-              isLoading={isSubmitting}
+              isLoading={isGeneratingAI || isSubmitting}
               rightIcon={<Sparkles className="w-5 h-5 stroke-[2.5]" />}
             >
-              Generate with AI Co-Pilot
+              {aiOptions ? "Regenerate AI Plans" : "Generate with AI Co-Pilot"}
             </NeoButton>
           </div>
         )}
       </div>
+
+      {/* Detailed Plan Inspection Modal */}
+      {inspectingPlan && (
+        <Modal
+          isOpen={!!inspectingPlan}
+          onClose={() => setInspectingPlan(null)}
+          title={inspectingPlan.badge}
+          subtitle={inspectingPlan.title}
+          maxWidth="lg"
+        >
+          <div className="flex flex-col gap-5 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="p-4 bg-[#FAECDC] border-2 border-[#171313] rounded-xl flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase text-neutral-600 block">
+                  Total Estimated Cost ({inspectingPlan.duration_days} Days)
+                </span>
+                <span className="font-display font-black text-2xl text-[#171313]">
+                  ₹{inspectingPlan.total_cost.toLocaleString("en-IN")}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-extrabold uppercase text-neutral-600 block">
+                  Daily Spending
+                </span>
+                <span className="font-display font-extrabold text-lg text-[#171313]">
+                  ₹{inspectingPlan.daily_budget.toLocaleString("en-IN")} / day
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <h5 className="font-display font-extrabold text-sm uppercase tracking-wide text-[#171313]">
+                Day-by-Day Stops & Activities:
+              </h5>
+              {inspectingPlan.stops.map((stop, sIdx) => (
+                <div
+                  key={sIdx}
+                  className="p-4 bg-white border-2 border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313] flex flex-col gap-3"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
+                    <span className="font-display font-extrabold text-sm text-[#171313] flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-[#D94B3D]" />
+                      Stop {sIdx + 1}: {stop.destination_name}
+                    </span>
+                    <span className="text-xs text-neutral-500 font-semibold">
+                      {stop.arrival_date} → {stop.departure_date}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {stop.activities.map((act, aIdx) => (
+                      <div
+                        key={aIdx}
+                        className="p-2.5 bg-neutral-50 border border-[#171313] rounded-lg flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="font-display font-bold text-xs text-[#171313]">
+                            {act.title}
+                          </div>
+                          {act.notes && (
+                            <div className="text-[11px] text-neutral-600 mt-0.5">{act.notes}</div>
+                          )}
+                        </div>
+                        <span className="font-display font-extrabold text-xs text-[#171313] flex-shrink-0">
+                          ₹{act.estimated_cost}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-neutral-200">
+              <NeoButton variant="white" size="sm" onClick={() => setInspectingPlan(null)}>
+                Back to Comparison
+              </NeoButton>
+              <NeoButton
+                variant={inspectingPlan.plan_type === "PREMIUM" ? "yellow" : "primary"}
+                size="sm"
+                onClick={() => {
+                  const p = inspectingPlan;
+                  setInspectingPlan(null);
+                  handleSelectAIPlan(p);
+                }}
+              >
+                Select &amp; Create Trip
+              </NeoButton>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -25,6 +25,15 @@ class TripGenerateRequest(BaseModel):
     traveller_count: int = 1
 
 
+class SelectAIPlanRequest(BaseModel):
+    selected_plan: dict
+    destination_ids: list[uuid.UUID] = []
+    start_date: date | None = None
+    end_date: date | None = None
+    traveller_count: int = 1
+
+
+
 class TripCreateRequest(BaseModel):
     """The five required fields from the Create-New-Trip screen (spec 7)."""
 

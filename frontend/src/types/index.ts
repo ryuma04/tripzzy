@@ -191,8 +191,8 @@ export interface Destination {
   name: string;
   city: string;
   country: string;
-  region: string;
-  description: string;
+  region?: string;
+  description?: string;
   image_url?: string;
   latitude?: number;
   longitude?: number;
@@ -367,6 +367,104 @@ export interface AdminDashboard {
   activity_categories: { category: string; count: number }[];
 }
 
+// ─── AI Travel Plans (Two Real Options) ─────
+
+export interface AICostBreakdown {
+  accommodation: number;
+  transport: number;
+  activities: number;
+  food: number;
+  miscellaneous?: number;
+}
+
+export interface AIPlanActivity {
+  title: string;
+  date: string;
+  start_time?: string;
+  end_time?: string;
+  estimated_cost: number;
+  notes?: string;
+}
+
+export interface AIPlanStop {
+  destination_name: string;
+  arrival_date: string;
+  departure_date: string;
+  activities: AIPlanActivity[];
+}
+
+export interface AITravelPlan {
+  plan_type: "BUDGET" | "PREMIUM";
+  badge: string;
+  title: string;
+  description: string;
+  total_cost: number;
+  currency: string;
+  duration_days: number;
+  cost_breakdown: AICostBreakdown;
+  daily_budget: number;
+  advantages: string;
+  tradeoffs: string;
+  why_cheaper?: string;
+  why_more?: string;
+  stops: AIPlanStop[];
+}
+
+export interface AITwoOptionsResponse {
+  budget_plan: AITravelPlan;
+  premium_plan: AITravelPlan;
+}
+
+export interface SelectAIPlanPayload {
+  selected_plan: AITravelPlan;
+  destination_ids?: string[];
+  start_date?: string;
+  end_date?: string;
+  traveller_count?: number;
+}
+
+// ─── Bill Splitting ────────────────────────
+
+export type BillSplitStatus = "PENDING" | "PAID" | "SETTLED" | "OWES";
+
+export interface BillSplitMember {
+  id: string;
+  user_id?: string;
+  name: string;
+  email?: string;
+  handle?: string;
+  avatar_url?: string;
+  is_current_user: boolean;
+  share_amount: number;
+  status: BillSplitStatus;
+}
+
+export interface BillSplit {
+  id: string;
+  trip_id: string;
+  trip_title: string;
+  total_expense: number;
+  member_count: number;
+  split_type: "equal" | "custom";
+  created_at: string;
+  created_by_name: string;
+  members: BillSplitMember[];
+  status: "PENDING" | "SETTLED";
+}
+
+// ─── Notifications ─────────────────────────
+
+export interface TripzyyNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: "bill_split" | "trip_update" | "system" | "trip_alert" | "upvote";
+  created_at: string;
+  read: boolean;
+  action_label?: string;
+  meta?: Record<string, any>;
+}
+
 // ─── Search Params ─────────────────────────
 
 export interface DestinationSearchParams {
@@ -397,3 +495,4 @@ export interface TripSearchParams {
   sort_by?: string;
   sort_order?: "asc" | "desc";
 }
+

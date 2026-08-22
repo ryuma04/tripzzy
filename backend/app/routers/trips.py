@@ -30,6 +30,7 @@ from app.schemas.trip import (
     ShareResponse,
     TripCreateRequest,
     TripGenerateRequest,
+    SelectAIPlanRequest,
     TripDetail,
     TripSummary,
     TripUpdateRequest,
@@ -50,34 +51,170 @@ SortBy = Literal["created_at", "updated_at", "start_date", "end_date", "title", 
 async def list_trips(
     current_user: CurrentUser,
     db: DbSession,
-    page: Pagination,
-    status: Annotated[
-        TripStatus | None, Query(description="Filter by computed status")
-    ] = None,
-    q: Annotated[str | None, Query(max_length=100)] = None,
-    sort_by: SortBy = "start_date",
-    sort_order: Literal["asc", "desc"] = "desc",
+    pagination: Pagination,
+    status: Annotated[TripStatus | None, Query()] = None,
+    sort_by: Annotated[SortBy, Query()] = "created_at",
+    sort_order: Annotated[Literal["asc", "desc"], Query()] = "desc",
 ):
-    """Spec section 10: Ongoing / Upcoming / Completed, plus draft.
-
-    ``status`` is recomputed from the trip's dates and stop count on every
-    read, so a stale value from the client can never influence the result.
-    """
     items, total = await TripService(db).list_for_user(
         current_user,
-        offset=page.offset,
-        limit=page.limit,
+        offset=pagination.offset,
+        limit=pagination.limit,
         status=status,
-        q=q,
         sort_by=sort_by,
         sort_order=sort_order,
     )
     return responses.paginated(
-        [TripSummary(**i).model_dump() for i in items],
-        page=page.page,
-        limit=page.limit,
+        [TripSummary(**t).model_dump() for t in items],
+        page=pagination.page,
+        limit=pagination.limit,
         total=total,
     )
+
+
+@router.post("/generate-options", summary="Generate two AI travel plan options (Budget & Premium)")
+async def generate_trip_options(
+    payload: TripGenerateRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Generate EXACTLY TWO distinct travel plans: Budget Smart and Premium Experience."""
+    dest_repo = DestinationRepository(db)
+    destinations = []
+    for d_id in payload.destination_ids:
+        d = await dest_repo.get(d_id)
+        if d:
+            destinations.append(d)
+    
+    dest_names = [d.name for d in destinations] if destinations else ["Goa"]
+    ai_service = AIService()
+
+    options = await ai_service.generate_two_itinerary_options(
+        destinations=dest_names,
+        start_date=str(payload.start_date),
+        end_date=str(payload.end_date),
+        budget_tier=payload.budget_tier,
+        travel_style=payload.travel_style,
+        traveller_count=payload.traveller_count,
+    )
+    return responses.success(options, "Generated two AI trip options successfully")
+
+
+@router.post("/select-plan", summary="Select and persist an AI generated plan", status_code=201)
+async def select_ai_plan(
+    payload: SelectAIPlanRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Persist chosen AI plan into real Trip, Stops, and Itinerary Activities with plan_type recorded."""
+    plan = payload.selected_plan
+    plan_type = plan.get("plan_type", "BUDGET")
+    badge_label = "Best Value" if plan_type == "BUDGET" else "Premium Experience"
+    
+    dest_repo = DestinationRepository(db)
+    destinations = []
+    for d_id in payload.destination_ids:
+        d = await dest_repo.get(d_id)
+        if d:
+            destinations.append(d)
+
+    # Determine dates
+    try:
+        start_date = payload.start_date or date.fromisoformat(str(plan.get("stops", [{}])[0].get("arrival_date")))
+    except Exception:
+        start_date = date.today()
+
+    try:
+        end_date = payload.end_date or date.fromisoformat(str(plan.get("stops", [{}])[-1].get("departure_date")))
+    except Exception:
+        end_date = start_date
+
+    if start_date > end_date:
+        end_date = start_date
+
+    total_cost = plan.get("total_cost", 25000)
+    cost_val = str(total_cost)
+
+    # 1. Create Trip with AI Preference in description
+    trip_title = plan.get("title", f"Trip to {destinations[0].name if destinations else 'India'}")[:120]
+    description = f"AI Preference: {badge_label} | {plan.get('description', '')}"[:2000]
+
+    trip_create = TripCreateRequest(
+        title=trip_title,
+        description=description,
+        start_date=start_date,
+        end_date=end_date,
+        budget=cost_val,
+        traveller_count=payload.traveller_count or 1,
+    )
+
+    trip_svc = TripService(db)
+    created_trip = await trip_svc.create(trip_create, current_user)
+    trip_id = created_trip["id"]
+
+    # 2. Create Stops and Activities
+    itin_svc = ItineraryService(db)
+    stops_plan = plan.get("stops", [])
+    if not stops_plan and destinations:
+        stops_plan = [{"destination_name": d.name, "arrival_date": str(start_date), "departure_date": str(end_date), "activities": []} for d in destinations]
+
+    for i, stop_plan in enumerate(stops_plan):
+        dest_name = stop_plan.get("destination_name", "")
+        matched_dest = next((d for d in destinations if d.name.lower() in dest_name.lower()), destinations[i % len(destinations)] if destinations else None)
+        
+        try:
+            arr = date.fromisoformat(str(stop_plan.get("arrival_date", start_date)))
+        except Exception:
+            arr = start_date
+        try:
+            dep = date.fromisoformat(str(stop_plan.get("departure_date", end_date)))
+        except Exception:
+            dep = end_date
+
+        if arr < start_date: arr = start_date
+        if dep > end_date: dep = end_date
+        if arr > dep: dep = arr
+
+        stop_create = StopCreateRequest(
+            city_name=matched_dest.name if matched_dest else dest_name or "Destination",
+            country=matched_dest.country if matched_dest else "India",
+            destination_id=matched_dest.id if matched_dest else None,
+            arrival_date=arr,
+            departure_date=dep,
+            order_index=i,
+        )
+        try:
+            created_stop, _ = await itin_svc.add_stop(trip_id, stop_create, current_user)
+            stop_id = created_stop["id"]
+
+            for j, act_plan in enumerate(stop_plan.get("activities", [])):
+                act_date_str = act_plan.get("date", arr.isoformat())
+                try:
+                    act_date = date.fromisoformat(str(act_date_str))
+                except Exception:
+                    act_date = arr
+                if act_date < arr: act_date = arr
+                if act_date > dep: act_date = dep
+
+                act_cost = act_plan.get("estimated_cost", 0)
+                try:
+                    act_cost_val = Decimal(str(act_cost))
+                except Exception:
+                    act_cost_val = Decimal("0")
+
+                act_create = ItineraryActivityCreateRequest(
+                    title=str(act_plan.get("title", "Curated Experience"))[:160],
+                    activity_date=act_date,
+                    estimated_cost=act_cost_val,
+                    notes=str(act_plan.get("notes", ""))[:2000] if act_plan.get("notes") else None,
+                    order_index=j,
+                )
+                await itin_svc.add_activity(stop_id, act_create, current_user)
+        except Exception as err:
+            logger.warning(f"Failed to add stop/activity during select_ai_plan: {err}")
+
+    final_trip = await trip_svc.detail(trip_id, current_user)
+    return responses.success(TripDetail(**final_trip).model_dump(), "Selected AI plan saved to trip successfully", status_code=201)
 
 
 @router.post("/generate", summary="Generate a trip using AI", status_code=201)

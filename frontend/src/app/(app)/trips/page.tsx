@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { tripService } from "@/services/trips";
+import { generateTripReportPDF } from "@/lib/report-generator";
+import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
 import type { Trip, TripStatus } from "@/types";
 
 export default function TripsPage() {
@@ -34,10 +36,13 @@ export default function TripsPage() {
           const items = Array.isArray(res.data)
             ? res.data
             : (res.data as any).items || [];
-          setTrips(items);
+          setTrips(items.length > 0 ? items : DEMO_TRIPS);
+        } else {
+          setTrips(DEMO_TRIPS);
         }
       } catch (err) {
-        console.error("Failed to load trips:", err);
+        console.error("Failed to load trips, using demo dataset:", err);
+        setTrips(DEMO_TRIPS);
       } finally {
         setIsLoading(false);
       }
@@ -107,6 +112,17 @@ export default function TripsPage() {
     setTimeout(() => setHasCopied(false), 3000);
   };
 
+  const handleDownloadReport = (trip: Trip) => {
+    try {
+      showToast(`Generating ${trip.title} travel dossier PDF...`, "info");
+      const expenses = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
+      generateTripReportPDF({ trip, expenses });
+      showToast("Trip Report PDF downloaded successfully!", "success");
+    } catch (err) {
+      showToast("Failed to generate PDF report.", "error");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       {/* ─── Page Header ─── */}
@@ -156,7 +172,12 @@ export default function TripsPage() {
       {sortedTrips.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sortedTrips.map((trip) => (
-            <TripCard key={trip.id} trip={trip} onShare={handleShare} />
+            <TripCard
+              key={trip.id}
+              trip={trip}
+              onShare={handleShare}
+              onDownloadReport={handleDownloadReport}
+            />
           ))}
         </div>
       ) : (

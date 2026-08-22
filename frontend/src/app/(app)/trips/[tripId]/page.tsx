@@ -22,6 +22,8 @@ import {
   Map as MapIcon,
   Wallet,
   Compass,
+  Download,
+  FileText,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -34,9 +36,12 @@ import { useToast } from "@/components/ui/toast";
 import { ItineraryBuilder } from "@/components/itinerary/itinerary-builder";
 import { ItineraryView } from "@/components/itinerary/itinerary-view";
 import { BudgetOverview } from "@/components/budget/budget-overview";
+import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
-import type { Trip } from "@/types";
+import { generateTripReportPDF } from "@/lib/report-generator";
+import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
+import type { Trip, Expense } from "@/types";
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -49,6 +54,8 @@ export default function TripDetailPage() {
   const [activeTab, setActiveTab] = useState("itinerary");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
   const [selectedMapStopId, setSelectedMapStopId] = useState<string | undefined>(undefined);
 
@@ -67,10 +74,20 @@ export default function TripDetailPage() {
         if (res.success && res.data) {
           setTrip(res.data);
         } else {
-          showToast(res.message || "Failed to load trip.", "error");
+          // Check demo dataset fallback
+          const demoFound = DEMO_TRIPS.find((t) => t.id === tripId);
+          if (demoFound) {
+            setTrip(demoFound);
+          } else {
+            showToast(res.message || "Failed to load trip.", "error");
+          }
         }
       } catch (err) {
-        console.error("Error loading trip detail:", err);
+        console.error("Error loading trip detail, checking demo dataset:", err);
+        const demoFound = DEMO_TRIPS.find((t) => t.id === tripId);
+        if (demoFound) {
+          setTrip(demoFound);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -80,6 +97,38 @@ export default function TripDetailPage() {
       loadTripDetail();
     }
   }, [tripId]);
+
+  const handleDownloadReport = async () => {
+    if (!trip) return;
+    setIsDownloadingReport(true);
+    try {
+      showToast("Compiling official Tripzyy Travel Dossier PDF...", "info");
+      let expenses: Expense[] = [];
+      try {
+        const expRes = await tripService.getExpenses(trip.id);
+        if (expRes.success && expRes.data) {
+          expenses = expRes.data;
+        }
+      } catch (e) {
+        console.warn("Could not fetch remote expenses, checking demo dataset:", e);
+      }
+
+      if (!expenses || expenses.length === 0) {
+        expenses = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
+      }
+
+      generateTripReportPDF({
+        trip,
+        expenses,
+      });
+      showToast("Trip Report PDF downloaded successfully!", "success");
+    } catch (err: any) {
+      console.error("Report generation failed:", err);
+      showToast("Failed to generate PDF report.", "error");
+    } finally {
+      setIsDownloadingReport(false);
+    }
+  };
 
   const handleCopyShareLink = async () => {
     if (!trip) return;
@@ -138,10 +187,12 @@ export default function TripDetailPage() {
     );
   }
 
+  const isAIPlan = trip.description?.includes("AI Preference:");
+
   return (
     <div className="flex flex-col gap-8">
       {/* ─── Back Link & Actions Bar ─── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Link
           href="/trips"
           className="inline-flex items-center gap-2 font-display font-bold text-xs uppercase tracking-wider text-neutral-700 hover:text-[#111111] hover:-translate-x-0.5 transition-transform"
@@ -150,7 +201,24 @@ export default function TripDetailPage() {
           <span>Back to All Trips</span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <NeoButton
+            variant="yellow"
+            size="sm"
+            leftIcon={<Download className="w-3.5 h-3.5" />}
+            onClick={handleDownloadReport}
+            isLoading={isDownloadingReport}
+          >
+            Download Report
+          </NeoButton>
+          <NeoButton
+            variant="white"
+            size="sm"
+            leftIcon={<Receipt className="w-3.5 h-3.5" />}
+            onClick={() => setIsSplitModalOpen(true)}
+          >
+            Split Bill
+          </NeoButton>
           <NeoButton
             variant="white"
             size="sm"
@@ -174,16 +242,28 @@ export default function TripDetailPage() {
       <NeoCard className="p-6 md:p-8 bg-[#FFFAF3] border-[4px] border-[#171313] shadow-[6px_6px_0px_#D94B3D]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex flex-wrap items-center gap-3 mb-2">
               <Badge status={trip.status} />
+              {isAIPlan && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-[#107038] text-white border-2 border-[#171313] rounded-md font-display font-black text-[10px] uppercase shadow-[2px_2px_0px_#171313]">
+                  <Sparkles className="w-3 h-3 fill-white" />
+                  {trip.description?.split("|")[0].replace("AI Preference:", "").trim() || "AI Curated"}
+                </span>
+              )}
               <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#D94B3D]">
-                {trip.stops?.map((s) => s.destination?.city).join(" → ")}
+                {trip.stops?.map((s) => s.destination?.city || s.city_name).join(" → ")}
               </span>
             </div>
 
             <h1 className="font-display font-extrabold text-3xl md:text-4xl text-[#171313] leading-tight">
               {trip.title}
             </h1>
+
+            {trip.description && (
+              <p className="text-xs sm:text-sm text-neutral-600 font-medium mt-1 max-w-2xl">
+                {trip.description}
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-neutral-700 mt-3">
               <div className="flex items-center gap-1.5 bg-[#FFF4E6] px-2.5 py-1 rounded-lg border border-[#171313]">
@@ -200,6 +280,26 @@ export default function TripDetailPage() {
                 <span>Budget: ₹{trip.budget.toLocaleString("en-IN")}</span>
               </div>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2 flex-shrink-0">
+            <NeoButton
+              variant="primary"
+              size="md"
+              leftIcon={<Download className="w-4 h-4" />}
+              onClick={handleDownloadReport}
+              isLoading={isDownloadingReport}
+            >
+              Download PDF Dossier
+            </NeoButton>
+            <NeoButton
+              variant="white"
+              size="md"
+              leftIcon={<Receipt className="w-4 h-4" />}
+              onClick={() => setIsSplitModalOpen(true)}
+            >
+              Split Group Bill
+            </NeoButton>
           </div>
         </div>
       </NeoCard>
@@ -423,6 +523,13 @@ export default function TripDetailPage() {
         title="Delete Trip"
         message={`Are you sure you want to permanently delete "${trip.title}"? All associated stops, activities and recorded expenses will be removed.`}
         confirmLabel="Yes, Delete Trip"
+      />
+
+      {/* Split Your Bill Modal */}
+      <SplitBillModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+        initialTrip={trip}
       />
     </div>
   );

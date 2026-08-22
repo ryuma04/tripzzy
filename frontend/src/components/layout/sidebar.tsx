@@ -63,6 +63,9 @@ const mainNavItems: NavItem[] = [
     href: "/calendar",
     icon: <CalendarIcon className="w-5 h-5" />,
   },
+];
+
+const adminNavItems: NavItem[] = [
   {
     label: "Admin Panel",
     href: "/admin",
@@ -134,7 +137,7 @@ export const Sidebar: React.FC = () => {
 
         {/* Main Nav Links */}
         <nav className="flex flex-col gap-1.5">
-          {mainNavItems.map((item) => {
+          {(isAdmin ? adminNavItems : mainNavItems).map((item) => {
             const active = isActive(item.href);
             return (
               <Link

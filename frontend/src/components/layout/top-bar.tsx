@@ -18,7 +18,8 @@ import { NeoButton } from "@/components/ui/neo-button";
 import { Avatar } from "@/components/ui/avatar";
 import { getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
-import type { User } from "@/types";
+import { getNotifications } from "@/lib/demo-data";
+import type { User, TripzyyNotification } from "@/types";
 
 export const TopBar: React.FC = () => {
   const router = useRouter();
@@ -28,6 +29,11 @@ export const TopBar: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<TripzyyNotification[]>([]);
+
+  useEffect(() => {
+    setNotifications(getNotifications());
+  }, [showNotifications]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,30 +57,6 @@ export const TopBar: React.FC = () => {
       }
     }
   };
-
-  const sampleNotifications = [
-    {
-      id: "1",
-      title: "Expedition Alert",
-      desc: "Goa Beach Hopping starts in 3 days!",
-      time: "2h ago",
-      icon: <MapPin className="w-4 h-4 text-[#E51919]" />,
-    },
-    {
-      id: "2",
-      title: "Budget Update",
-      desc: "Expense logged for Mumbai Colaba Hotel",
-      time: "5h ago",
-      icon: <Calendar className="w-4 h-4 text-[#15803D]" />,
-    },
-    {
-      id: "3",
-      title: "Community Upvote",
-      desc: "Rohit cloned your Himachal Trek circuit",
-      time: "1d ago",
-      icon: <Sparkles className="w-4 h-4 text-[#E51919]" />,
-    },
-  ];
 
   return (
     <header className="sticky top-0 z-20 w-full h-20 bg-[#FFF5E9]/90 backdrop-blur-md border-b-[3px] border-[#171313] px-6 lg:px-8 flex items-center justify-between gap-4 select-none">
@@ -150,33 +132,44 @@ export const TopBar: React.FC = () => {
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-3 w-80 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[6px_6px_0px_#171313] p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+            <div className="absolute right-0 mt-3 w-84 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[6px_6px_0px_#171313] p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 max-h-96 overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b-2 border-[#171313] mb-3">
                 <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#171313]">
-                  Notifications
+                  Notifications &amp; Splits
                 </span>
                 <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-[#E51919] text-white border border-[#171313]">
-                  3 New
+                  {notifications.filter((n) => !n.read).length || notifications.length} Updates
                 </span>
               </div>
               <div className="flex flex-col gap-2.5">
-                {sampleNotifications.map((n) => (
+                {notifications.map((n) => (
                   <div
                     key={n.id}
                     className="p-2.5 bg-[#FAF7F2] border border-[#171313] rounded-xl flex items-start gap-2.5 hover:bg-[#F3ECE2] transition-colors"
                   >
-                    <div className="p-1.5 bg-[#FFFFFF] rounded-lg border border-[#171313]">
-                      {n.icon}
+                    <div className="p-1.5 bg-[#FFFFFF] rounded-lg border border-[#171313] flex-shrink-0 mt-0.5">
+                      {n.type === "bill_split" ? (
+                        <span className="text-xs">🧾</span>
+                      ) : (
+                        <MapPin className="w-4 h-4 text-[#E51919]" />
+                      )}
                     </div>
-                    <div>
-                      <div className="font-display font-bold text-xs text-[#171313]">
-                        {n.title}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-display font-bold text-xs text-[#171313] truncate">
+                          {n.title}
+                        </span>
+                        {n.action_label && (
+                          <span className="text-[9px] font-black uppercase px-1 rounded bg-[#B7F4D8] border border-[#171313] text-[#107038] flex-shrink-0">
+                            {n.action_label}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[11px] text-neutral-600 font-medium leading-tight">
-                        {n.desc}
+                      <div className="text-[11px] text-neutral-600 font-medium leading-tight mt-0.5">
+                        {n.message}
                       </div>
                       <div className="text-[9px] font-bold text-neutral-400 mt-1">
-                        {n.time}
+                        {n.created_at}
                       </div>
                     </div>
                   </div>

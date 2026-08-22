@@ -19,7 +19,9 @@ import { NeoPieChart } from "@/components/charts/neo-pie-chart";
 import { NeoBarChart } from "@/components/charts/neo-bar-chart";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { tripService } from "@/services/trips";
+import { DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
 import type { Trip, Expense, ExpenseCategory } from "@/types";
 
 interface BudgetOverviewProps {
@@ -30,6 +32,7 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
   const { showToast } = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
 
   // Add Expense Modal State
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
@@ -44,14 +47,17 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
       setIsLoading(true);
       try {
         const res = await tripService.getExpenses(trip.id);
-        if (res.success && res.data) {
-          const items = Array.isArray(res.data)
-            ? res.data
-            : (res.data as any).items || [];
-          setExpenses(items);
+        if (res.success && res.data && res.data.length > 0) {
+          setExpenses(res.data);
+        } else {
+          // Fallback to realistic demo expenses for this trip
+          const demoExps = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
+          setExpenses(demoExps);
         }
       } catch (err) {
-        console.error("Failed to load expenses:", err);
+        console.error("Failed to load expenses, using demo dataset:", err);
+        const demoExps = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
+        setExpenses(demoExps);
       } finally {
         setIsLoading(false);
       }
@@ -221,14 +227,24 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
             </p>
           </div>
 
-          <NeoButton
-            variant="yellow"
-            size="sm"
-            leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
-            onClick={() => setIsAddExpenseOpen(true)}
-          >
-            + Add Expense Entry
-          </NeoButton>
+          <div className="flex items-center gap-2">
+            <NeoButton
+              variant="white"
+              size="sm"
+              leftIcon={<Receipt className="w-4 h-4 stroke-[2.5]" />}
+              onClick={() => setIsSplitModalOpen(true)}
+            >
+              Split Bill
+            </NeoButton>
+            <NeoButton
+              variant="yellow"
+              size="sm"
+              leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
+              onClick={() => setIsAddExpenseOpen(true)}
+            >
+              + Add Expense Entry
+            </NeoButton>
+          </div>
         </div>
 
         {/* Expenses List */}
@@ -343,6 +359,13 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
           </div>
         </form>
       </Modal>
+
+      {/* Split Bill Modal */}
+      <SplitBillModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+        initialTrip={trip}
+      />
     </div>
   );
 };

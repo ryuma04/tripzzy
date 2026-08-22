@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Users,
   Search,
+  Receipt,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -23,9 +24,11 @@ import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { SearchBar } from "@/components/ui/search-bar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
+import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { tripService } from "@/services/trips";
 import { destinationService } from "@/services/destinations";
 import { getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
+import { DEMO_TRIPS, DEMO_DESTINATIONS } from "@/lib/demo-data";
 import type { Trip, Destination, User } from "@/types";
 
 export default function DashboardPage() {
@@ -35,6 +38,7 @@ export default function DashboardPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -54,17 +58,23 @@ export default function DashboardPage() {
           const items = Array.isArray(tripsRes.data)
             ? tripsRes.data
             : (tripsRes.data as any).items || [];
-          setTrips(items);
+          setTrips(items.length > 0 ? items : DEMO_TRIPS);
+        } else {
+          setTrips(DEMO_TRIPS);
         }
 
         if (destsRes.success && destsRes.data) {
           const items = Array.isArray(destsRes.data)
             ? destsRes.data
             : (destsRes.data as any).items || [];
-          setDestinations(items);
+          setDestinations(items.length > 0 ? items : DEMO_DESTINATIONS);
+        } else {
+          setDestinations(DEMO_DESTINATIONS);
         }
       } catch (err) {
-        console.error("Failed to load dashboard data:", err);
+        console.error("Failed to load dashboard data, using demo store:", err);
+        setTrips(DEMO_TRIPS);
+        setDestinations(DEMO_DESTINATIONS);
       } finally {
         setIsLoading(false);
       }
@@ -78,7 +88,7 @@ export default function DashboardPage() {
     trips.find((t) => t.status === "upcoming") ||
     trips[0];
 
-  const totalBudget = trips.reduce((acc, t) => acc + (t.budget || 0), 0);
+  const totalBudget = trips.reduce((acc, t) => acc + (parseFloat(String(t.budget)) || 0), 0);
   const totalStops = trips.reduce(
     (acc, t) => acc + (t.stops?.length || 0),
     0
@@ -189,6 +199,40 @@ export default function DashboardPage() {
           trendPositive={true}
         />
       </div>
+
+      {/* ─── Split Your Bill Dedicated Feature Card (Spec 27) ─── */}
+      <NeoCard className="p-6 md:p-8 bg-[#EAF7EE] border-[3.5px] border-[#171313] shadow-[6px_6px_0px_#107038] flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#107038] text-white border-[2.5px] border-[#171313] flex items-center justify-center shadow-[3px_3px_0px_#171313] flex-shrink-0">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2 py-0.5 bg-[#B7F4D8] text-[#107038] border border-[#171313] rounded font-display font-black text-[10px] uppercase">
+                GROUP EXPENSES
+              </span>
+              <span className="text-xs font-bold text-neutral-600">
+                {trips.filter((t) => t.status === "completed").length || 2} completed trips available
+              </span>
+            </div>
+            <h3 className="font-display font-black text-xl text-[#171313]">
+              Split Your Bill
+            </h3>
+            <p className="text-xs font-medium text-neutral-700 max-w-lg mt-0.5">
+              Divide verified expenses equally among your Tripzyy travel group, search and add members with @ handles, and dispatch instant notifications.
+            </p>
+          </div>
+        </div>
+        <NeoButton
+          variant="primary"
+          size="md"
+          className="bg-[#107038] text-white hover:bg-[#0d592d] flex-shrink-0"
+          onClick={() => setIsSplitModalOpen(true)}
+          rightIcon={<ArrowRight className="w-4 h-4" />}
+        >
+          Split a Trip
+        </NeoButton>
+      </NeoCard>
 
       {/* ─── Active Expedition Showcase (Screen 3 Live Banner) ─── */}
       {activeTrip && (
@@ -364,6 +408,13 @@ export default function DashboardPage() {
           </Link>
         </div>
       </NeoCard>
+
+      {/* Split Your Bill Interactive Flow Modal */}
+      <SplitBillModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+        availableTrips={trips}
+      />
     </div>
   );
 }

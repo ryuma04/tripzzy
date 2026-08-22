@@ -10,7 +10,9 @@ from passlib.context import CryptContext
 from app.core.config import settings
 from app.core.exceptions import UnauthorizedError
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=settings.BCRYPT_ROUNDS
+)
 
 TokenType = Literal["access", "refresh"]
 

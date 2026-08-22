@@ -27,6 +27,8 @@ os.environ["SMTP_USERNAME"] = ""
 os.environ["SMTP_PASSWORD"] = ""
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "false"
+# Minimum bcrypt cost: hashing otherwise dominates the run time.
+os.environ["BCRYPT_ROUNDS"] = "4"
 os.environ.setdefault(
     "SECRET_KEY", "test-secret-key-that-is-definitely-long-enough-1234567890"
 )
@@ -60,7 +62,7 @@ TestSessionLocal = async_sessionmaker(
 )
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _schema():
     """Build the schema once per session, tear it down at the end."""
     assert "tripzyy_test" in settings.database_url_str, (

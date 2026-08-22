@@ -1,3 +1,4 @@
+
 """Typed application settings, loaded from the environment / .env file."""
 
 from functools import lru_cache
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
 
     # --- Email / OTP (R1) ---
     REQUIRE_EMAIL_VERIFICATION: bool = True
+    GOOGLE_APP_SCRIPT_URL: str | None = None
     SMTP_SERVER: str | None = None
     SMTP_PORT: int = 587
     SMTP_USERNAME: str | None = None
@@ -94,7 +96,9 @@ class Settings(BaseSettings):
 
     @property
     def email_configured(self) -> bool:
-        """SMTP is only usable when every credential is present."""
+        """Email is usable if Google App Script URL or full SMTP credentials are present."""
+        if bool(self.GOOGLE_APP_SCRIPT_URL):
+            return True
         return all([self.SMTP_SERVER, self.SMTP_USERNAME, self.SMTP_PASSWORD])
 
     @property

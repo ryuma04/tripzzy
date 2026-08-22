@@ -1,3 +1,4 @@
+
 """AI Service for dynamically generating itineraries using Groq API."""
 
 import json
@@ -86,7 +87,9 @@ Make sure the dates fit between {start_date} and {end_date}. Provide realistic c
                 {"role": "system", "content": "You are a helpful travel assistant that outputs raw JSON matching the exact requested schema."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7
+            "temperature": 0.7,
+            "response_format": {"type": "json_object"},
+            "max_tokens": 4096
         }
 
         try:
@@ -103,8 +106,11 @@ Make sure the dates fit between {start_date} and {end_date}. Provide realistic c
                 
                 content = content.strip()
                 
-                # Sometime models wrap JSON in markdown block even when instructed not to
+                # Strip out thinking process tags (e.g. <think>...</think>) if returned by reasoning models
                 import re
+                content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+                
+                # Sometimes models wrap JSON in markdown block even when instructed not to
                 match = re.search(r'```(?:json)?\s*(.*?)\s*```', content, re.DOTALL)
                 if match:
                     content = match.group(1).strip()

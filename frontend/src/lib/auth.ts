@@ -50,11 +50,15 @@ export async function login(
       dispatchAuthChange();
       return res;
     }
+    // If the server responded with an error (e.g. 401 Unauthorized), return the real error
+    if (!res.success && res.error?.code !== "NETWORK_ERROR") {
+      return res;
+    }
   } catch (err) {
     // Graceful fallback for offline / mock dev mode
   }
   
-  // Local fallback session
+  // Local fallback session (only when backend is offline)
   const fallbackRole: "user" | "admin" = payload.role || (payload.email.toLowerCase().includes("admin") ? "admin" : "user");
   const fallbackUser: User = {
     ...mockCurrentUser,
@@ -71,7 +75,7 @@ export async function login(
 
   return {
     success: true,
-    message: "Signed in successfully",
+    message: "Signed in in offline mock mode",
     data: {
       access_token: "mock_jwt_token",
       token_type: "bearer",

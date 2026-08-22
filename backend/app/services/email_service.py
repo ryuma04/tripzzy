@@ -9,6 +9,7 @@ import logging
 from email.message import EmailMessage
 
 import aiosmtplib
+import httpx
 
 from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableError
@@ -23,7 +24,7 @@ class EmailService:
 
     @staticmethod
     async def send(to: str, subject: str, body: str, html: str | None = None) -> None:
-        """Send one message, or raise ``ServiceUnavailableError``.
+        """Send one message via Google Apps Script or SMTP, or raise ``ServiceUnavailableError``.
 
         Never raises a bare exception: callers decide whether a delivery
         failure should abort their operation.
@@ -33,6 +34,44 @@ class EmailService:
                 "Email delivery is not configured on this server"
             )
 
+        # --- Priority 1: Google Apps Script Webhook ---
+        if settings.GOOGLE_APP_SCRIPT_URL:
+            payload = {
+                "to": to,
+                "subject": subject,
+                "body": body,
+                "html": html,
+                "name": settings.SMTP_FROM_NAME or "Tripzyy",
+            }
+            try:
+                # GAS web apps redirect (302) to script.googleusercontent.com, so follow_redirects=True is required
+                async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+                    response = await client.post(
+                        settings.GOOGLE_APP_SCRIPT_URL,
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    response.raise_for_status()
+                    
+                    try:
+                        data = response.json()
+                        if isinstance(data, dict) and data.get("status") == "error":
+                            logger.error("Google Apps Script email delivery error: %s", data.get("message"))
+                            raise ServiceUnavailableError(
+                                f"Could not send email: {data.get('message')}"
+                            )
+                    except ValueError:
+                        # Non-JSON response but HTTP 200 OK
+                        pass
+                logger.info("Email sent to %s via Google Apps Script", to)
+                return
+            except Exception as exc:
+                logger.error("Google Apps Script delivery to %s failed: %s", to, exc)
+                raise ServiceUnavailableError(
+                    "Could not send the email right now. Please try again shortly."
+                ) from exc
+
+        # --- Priority 2: Direct SMTP ---
         message = EmailMessage()
         message["Subject"] = subject
         message["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USERNAME}>"
@@ -51,6 +90,7 @@ class EmailService:
                 start_tls=settings.SMTP_START_TLS,
                 timeout=settings.SMTP_TIMEOUT_SECONDS,
             )
+            logger.info("Email sent to %s via SMTP", to)
         except (aiosmtplib.SMTPException, OSError, TimeoutError) as exc:
             # Log the real cause; tell the client something actionable.
             logger.error("SMTP delivery to %s failed: %s", to, exc)

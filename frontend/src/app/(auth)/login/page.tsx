@@ -141,12 +141,12 @@ export default function LoginPage() {
     setSelectedRole(role);
     if (role === "admin") {
       setEmail("admin@tripzyy.com");
-      setPassword("admin12345");
-      showToast("Admin credentials loaded.", "info");
+      setPassword("Admin@123");
+      showToast("Admin credentials loaded (admin@tripzyy.com / Admin@123)", "info");
     } else {
-      setEmail("sanket@tripzyy.com");
-      setPassword("explorer123");
-      showToast("Explorer credentials loaded.", "info");
+      setEmail("traveller@tripzyy.com");
+      setPassword("Travel@123");
+      showToast("Explorer credentials loaded (traveller@tripzyy.com / Travel@123)", "info");
     }
   };
 

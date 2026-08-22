@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { logout, getStoredUser, getCurrentUser } from "@/lib/auth";
+import { logout, getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
 import type { User } from "@/types";
 
 interface NavItem {
@@ -86,15 +86,7 @@ const secondaryNavItems: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const pathname = usePathname() || "/dashboard";
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(getStoredUser());
-
-  useEffect(() => {
-    getCurrentUser().then((res) => {
-      if (res.success && res.data) {
-        setUser(res.data);
-      }
-    });
-  }, []);
+  const { user, isAdmin } = useAuthUser();
 
   const isActive = (href: string) => {
     if (href === "/admin" && pathname.startsWith("/admin")) return true;

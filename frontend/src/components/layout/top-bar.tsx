@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { NeoButton } from "@/components/ui/neo-button";
 import { Avatar } from "@/components/ui/avatar";
-import { getStoredUser, getCurrentUser } from "@/lib/auth";
+import { getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
+import { useToast } from "@/components/ui/toast";
 import type { User } from "@/types";
 
 export const TopBar: React.FC = () => {
@@ -27,15 +28,6 @@ export const TopBar: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
-  const [user, setUser] = useState<User | null>(getStoredUser());
-
-  useEffect(() => {
-    getCurrentUser().then((res) => {
-      if (res.success && res.data) {
-        setUser(res.data);
-      }
-    });
-  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

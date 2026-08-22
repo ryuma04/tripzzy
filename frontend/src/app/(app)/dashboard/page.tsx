@@ -25,16 +25,15 @@ import { SearchBar } from "@/components/ui/search-bar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
 import { tripService } from "@/services/trips";
 import { destinationService } from "@/services/destinations";
-import { getStoredUser, getCurrentUser } from "@/lib/auth";
+import { getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
 import type { Trip, Destination, User } from "@/types";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user } = useAuthUser();
+  const { user, updateUser } = useAuthUser();
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [user, setUser] = useState<User | null>(getStoredUser());
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -48,7 +47,7 @@ export default function DashboardPage() {
         ]);
 
         if (userRes.success && userRes.data) {
-          setUser(userRes.data);
+          updateUser(userRes.data);
         }
 
         if (tripsRes.success && tripsRes.data) {

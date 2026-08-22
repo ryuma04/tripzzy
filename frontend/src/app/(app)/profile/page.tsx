@@ -27,14 +27,13 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { userService } from "@/services/users";
 import { tripService } from "@/services/trips";
-import { uploadAvatar, getCurrentUser } from "@/lib/auth";
+import { uploadAvatar, getCurrentUser, useAuthUser } from "@/lib/auth";
 import type { User, Trip } from "@/types";
 
 export default function ProfilePage() {
   const { showToast } = useToast();
   const { user, updateUser, isAdmin, setRole } = useAuthUser();
   const [isEditing, setIsEditing] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -59,16 +58,15 @@ export default function ProfilePage() {
         ]);
 
         if (userRes.success && userRes.data) {
-          const u = userRes.data;
-          setUser(u);
+          updateUser(userRes.data);
           setFormData({
-            first_name: u.first_name || "",
-            last_name: u.last_name || "",
-            email: u.email || "",
-            phone: u.phone || "",
-            city: u.city || "",
-            country: u.country || "",
-            additional_info: u.additional_info || "",
+            first_name: userRes.data.first_name || "",
+            last_name: userRes.data.last_name || "",
+            email: userRes.data.email || "",
+            phone: userRes.data.phone || "",
+            city: userRes.data.city || "",
+            country: userRes.data.country || "",
+            additional_info: userRes.data.additional_info || "",
           });
         }
 
@@ -102,9 +100,9 @@ export default function ProfilePage() {
       const res = await uploadAvatar(file);
       if (res.success && res.data) {
         if (res.data.user) {
-          setUser(res.data.user);
+          updateUser(res.data.user);
         } else if (res.data.avatar_url) {
-          setUser((prev) => (prev ? { ...prev, avatar_url: res.data!.avatar_url } : null));
+          updateUser({ ...user!, avatar_url: res.data!.avatar_url });
         }
         showToast("Profile avatar photo updated!", "success");
       } else {
@@ -129,9 +127,9 @@ export default function ProfilePage() {
       });
 
       if (res.success && res.data) {
-        setUser(res.data);
+        updateUser(res.data);
         setIsEditing(false);
-        showToast("Profile details updated successfully!", "success");
+        showToast("Profile updated successfully", "success");
       } else {
         showToast(res.message || "Failed to update profile.", "error");
       }

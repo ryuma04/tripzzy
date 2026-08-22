@@ -96,23 +96,35 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def _override_get_db():
+    async with TestSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+
+
+def _build_client(headers: dict[str, str] | None = None) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test/api/v1",
+        headers=headers or {},
+    )
+
+
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    """An HTTP client bound to the ASGI app, sharing the test database."""
+    """An **anonymous** client bound to the ASGI app.
 
-    async def _get_db():
-        async with TestSessionLocal() as session:
-            try:
-                yield session
-            except Exception:
-                await session.rollback()
-                raise
-
-    app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test/api/v1"
-    ) as ac:
+    This must stay genuinely unauthenticated: ``auth_client`` deliberately
+    builds its own instance rather than adding a header to this one, so that
+    a test taking both fixtures really is comparing signed-in against
+    signed-out. (An earlier version mutated this client's headers, which made
+    every "no authentication required" assertion pass vacuously.)
+    """
+    app.dependency_overrides[get_db] = _override_get_db
+    async with _build_client() as ac:
         yield ac
     app.dependency_overrides.clear()
 
@@ -150,10 +162,15 @@ async def user_token(client: AsyncClient) -> tuple[str, dict]:
 @pytest_asyncio.fixture
 async def auth_client(
     client: AsyncClient, user_token: tuple[str, dict]
-) -> AsyncClient:
+) -> AsyncGenerator[AsyncClient, None]:
+    """A signed-in client, separate from the anonymous ``client``.
+
+    Depends on ``client`` only so the database override is installed for the
+    duration of the test.
+    """
     token, _ = user_token
-    client.headers["Authorization"] = f"Bearer {token}"
-    return client
+    async with _build_client({"Authorization": f"Bearer {token}"}) as ac:
+        yield ac
 
 
 @pytest_asyncio.fixture

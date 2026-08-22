@@ -131,8 +131,10 @@ def _register_routers(app: FastAPI) -> None:
     """Mount routers as each phase lands."""
     from app.routers import (  # noqa: PLC0415
         activities,
+        admin,
         auth,
         calendar,
+        community,
         destinations,
         itinerary,
         logistics,
@@ -143,9 +145,13 @@ def _register_routers(app: FastAPI) -> None:
 
     prefix = settings.API_V1_PREFIX
     for module in (
-        auth, users, trips, stops, itinerary, destinations, activities, calendar,
+        auth, users, trips, stops, itinerary, destinations, activities,
+        calendar, admin,
     ):
         app.include_router(module.router, prefix=prefix)
+
+    for extra in (community.community_router, community.public_router):
+        app.include_router(extra, prefix=prefix)
 
     for item_router in (
         logistics.transport_router,

@@ -22,6 +22,7 @@ from app.models import (
     User,
 )
 from app.models.enums import TripStatus, UserRole, UserStatus
+from app.repositories.trip_repository import status_expression
 from app.services.trip_service import compute_status
 
 
@@ -217,8 +218,9 @@ class AdminService:
             stmt = stmt.where(func.lower(Trip.title).like(pattern))
             count_stmt = count_stmt.where(func.lower(Trip.title).like(pattern))
         if status is not None:
-            stmt = stmt.where(Trip.status == status)
-            count_stmt = count_stmt.where(Trip.status == status)
+            condition = status_expression() == status.value
+            stmt = stmt.where(condition)
+            count_stmt = count_stmt.where(condition)
 
         total = (await self.db.execute(count_stmt)).scalar_one()
         rows = (

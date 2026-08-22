@@ -8,6 +8,13 @@ from fastapi import APIRouter, Query
 from app.core import responses
 from app.core.deps import CurrentUser, DbSession, Pagination
 from app.models.enums import TripStatus
+from app.schemas.common import ReorderRequest
+from app.schemas.stop import (
+    ItineraryDay,
+    StopCreateRequest,
+    StopDetail,
+    StopResponse,
+)
 from app.schemas.trip import (
     ShareResponse,
     TripCreateRequest,
@@ -15,6 +22,7 @@ from app.schemas.trip import (
     TripSummary,
     TripUpdateRequest,
 )
+from app.services.itinerary_service import ItineraryService
 from app.services.trip_service import TripService
 
 router = APIRouter(prefix="/trips", tags=["trips"])
@@ -98,6 +106,60 @@ async def update_trip(
 async def delete_trip(trip_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     await TripService(db).delete(trip_id, current_user)
     return responses.success(None, "Trip deleted successfully")
+
+
+@router.get("/{trip_id}/stops", summary="List the trip's stops")
+async def list_stops(trip_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    stops = await ItineraryService(db).list_stops(trip_id, current_user)
+    return responses.success(
+        {"items": [StopDetail(**s).model_dump() for s in stops]}, "OK"
+    )
+
+
+@router.post("/{trip_id}/stops", summary="Add a stop", status_code=201)
+async def add_stop(
+    trip_id: uuid.UUID,
+    payload: StopCreateRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    stop, warnings = await ItineraryService(db).add_stop(
+        trip_id, payload, current_user
+    )
+    return responses.success(
+        StopDetail(**stop).model_dump(),
+        "Stop added successfully",
+        status_code=201,
+        warnings=warnings,
+    )
+
+
+@router.put("/{trip_id}/stops/reorder", summary="Reorder the trip's stops")
+async def reorder_stops(
+    trip_id: uuid.UUID,
+    payload: ReorderRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Takes the complete ordering and applies it in one transaction."""
+    stops = await ItineraryService(db).reorder_stops(
+        trip_id, payload.ordered_ids, current_user
+    )
+    return responses.success(
+        {"items": [StopDetail(**s).model_dump() for s in stops]},
+        "Stops reordered successfully",
+    )
+
+
+@router.get("/{trip_id}/itinerary", summary="Day-by-day itinerary")
+async def get_itinerary(
+    trip_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    """Spec section 13: activities grouped by day across every stop."""
+    data = await ItineraryService(db).itinerary(trip_id, current_user)
+    data["days"] = [ItineraryDay(**d).model_dump() for d in data["days"]]
+    data["stops"] = [StopResponse(**s).model_dump() for s in data["stops"]]
+    return responses.success(data, "OK")
 
 
 @router.post("/{trip_id}/share", summary="Publish a trip to the community")

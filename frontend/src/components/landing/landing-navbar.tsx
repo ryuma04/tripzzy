@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, ArrowRight } from "lucide-react";
-import { NeoButton } from "@/components/ui/neo-button";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
 
 export const LandingNavbar: React.FC = () => {
@@ -12,7 +11,7 @@ export const LandingNavbar: React.FC = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-[#FFF5E9]/95 backdrop-blur-md border-b-[3px] border-[#171313] px-6 sm:px-10 lg:px-16 py-4 select-none">
+      <header className="sticky top-0 z-50 w-full bg-[#FDF4EB] border-b-[3px] border-[#171313] px-6 sm:px-10 lg:px-16 py-4 select-none">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-6">
           {/* LEFT: Official Tripzyy Logo */}
           <Link
@@ -22,7 +21,7 @@ export const LandingNavbar: React.FC = () => {
             <TripzyyLogo size="md" />
           </Link>
 
-          {/* CENTER: Minimal & Clean Navigation Matching Reference */}
+          {/* CENTER: Exact Reference Navigation */}
           <nav className="hidden md:flex items-center gap-10 font-display font-black text-xs sm:text-sm uppercase tracking-wider text-[#171313]">
             <Link
               href="/explore"
@@ -44,35 +43,27 @@ export const LandingNavbar: React.FC = () => {
             </Link>
           </nav>
 
-          {/* RIGHT: Neo-Brutalist Auth CTAs Matching Reference */}
+          {/* RIGHT: Exact Reference Auth Buttons */}
           <div className="hidden sm:flex items-center gap-4">
             <Link href="/login">
-              <NeoButton
-                variant="white"
-                size="sm"
-                className="py-2.5 px-6 font-black uppercase text-xs tracking-wider shadow-[3px_3px_0px_#171313]"
-              >
+              <button className="py-2.5 px-6 bg-[#FFFFFF] text-[#171313] border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313] font-display font-black text-xs sm:text-sm uppercase tracking-wider hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer">
                 SIGN IN
-              </NeoButton>
+              </button>
             </Link>
             <Link href="/register">
-              <NeoButton
-                variant="primary"
-                size="sm"
-                rightIcon={<ArrowRight className="w-4 h-4 stroke-[3]" />}
-                className="py-2.5 px-6 font-black uppercase text-xs tracking-wider bg-[#D94B3D] hover:bg-[#A8322A] text-white shadow-[3px_3px_0px_#171313]"
-              >
-                SIGN UP
-              </NeoButton>
+              <button className="flex items-center gap-2 py-2.5 px-6 bg-[#D94B3D] hover:bg-[#A8322A] text-white border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313] font-display font-black text-xs sm:text-sm uppercase tracking-wider hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer">
+                <span>SIGN UP</span>
+                <ArrowRight className="w-4 h-4 stroke-[3]" />
+              </button>
             </Link>
           </div>
 
           {/* MOBILE TOGGLE */}
           <div className="flex sm:hidden items-center gap-2">
             <Link href="/login">
-              <NeoButton variant="white" size="sm" className="px-3 py-1.5 text-xs font-black">
+              <button className="px-3 py-1.5 bg-[#FFFFFF] text-[#171313] border-[2px] border-[#171313] rounded-xl font-display font-black text-xs uppercase shadow-[2px_2px_0px_#171313]">
                 SIGN IN
-              </NeoButton>
+              </button>
             </Link>
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -101,7 +92,7 @@ export const LandingNavbar: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: "-100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="relative bg-[#FFF5E9] border-b-[4px] border-[#171313] p-6 shadow-[6px_6px_0px_#171313] z-10 flex flex-col gap-5"
+              className="relative bg-[#FDF4EB] border-b-[4px] border-[#171313] p-6 shadow-[6px_6px_0px_#171313] z-10 flex flex-col gap-5"
             >
               <div className="flex items-center justify-between pb-3 border-b-2 border-[#171313]">
                 <TripzyyLogo size="sm" />
@@ -139,14 +130,15 @@ export const LandingNavbar: React.FC = () => {
 
               <div className="flex flex-col gap-2.5 pt-3 border-t-2 border-[#171313]">
                 <Link href="/register" onClick={() => setIsMobileMenuOpen(false)}>
-                  <NeoButton variant="primary" size="md" className="w-full bg-[#D94B3D] text-white">
-                    SIGN UP →
-                  </NeoButton>
+                  <button className="w-full flex items-center justify-center gap-2 py-3 bg-[#D94B3D] text-white border-[3px] border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313] font-display font-black uppercase text-sm">
+                    <span>SIGN UP</span>
+                    <ArrowRight className="w-4 h-4 stroke-[3]" />
+                  </button>
                 </Link>
                 <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                  <NeoButton variant="white" size="md" className="w-full">
+                  <button className="w-full py-3 bg-[#FFFFFF] text-[#171313] border-[3px] border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313] font-display font-black uppercase text-sm">
                     SIGN IN
-                  </NeoButton>
+                  </button>
                 </Link>
               </div>
             </motion.div>

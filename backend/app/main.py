@@ -108,11 +108,12 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     """Mount routers as each phase lands."""
-    from app.routers import auth, users  # noqa: PLC0415
+    from app.routers import auth, trips, users  # noqa: PLC0415
 
     prefix = settings.API_V1_PREFIX
     app.include_router(auth.router, prefix=prefix)
     app.include_router(users.router, prefix=prefix)
+    app.include_router(trips.router, prefix=prefix)
 
 
 app = create_app()

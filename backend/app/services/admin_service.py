@@ -287,13 +287,12 @@ class AdminService:
                 {"bucket": label, "count": await self.db.scalar(stmt)}
             )
 
+        # In PostgreSQL, date - date is already an integer day count, not an
+        # interval, so extract() would fail here.
         avg_duration = await self.db.scalar(
             select(
                 func.coalesce(
-                    func.avg(
-                        func.extract("day", Trip.end_date - Trip.start_date) + 1
-                    ),
-                    0,
+                    func.avg(Trip.end_date - Trip.start_date + 1), 0
                 )
             ).where(Trip.deleted_at.is_(None))
         )

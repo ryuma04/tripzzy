@@ -197,6 +197,14 @@ async def admin_token(client: AsyncClient, db: AsyncSession) -> str:
 
 
 @pytest_asyncio.fixture
+async def admin_client(
+    client: AsyncClient, admin_token: str
+) -> AsyncGenerator[AsyncClient, None]:
+    async with _build_client({"Authorization": f"Bearer {admin_token}"}) as ac:
+        yield ac
+
+
+@pytest_asyncio.fixture
 async def seeded_destination(db: AsyncSession) -> Destination:
     dest = Destination(
         name="Goa",

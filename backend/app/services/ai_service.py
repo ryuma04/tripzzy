@@ -40,32 +40,30 @@ class AIService:
             raise AIServiceError("Groq API key is missing. Please configure it in .env.")
 
         prompt = f"""
-You are an expert travel planner. The user wants a trip with the following details:
+You are an expert travel planner. Create a structured travel itinerary in JSON format for the following trip request:
 - Destinations: {", ".join(destinations)}
-- Dates: {start_date} to {end_date}
+- Travel Dates: {start_date} to {end_date}
 - Budget Tier: {budget_tier}
 - Travel Style / Vibes: {travel_style}
 - Number of Travellers: {traveller_count}
 
-Create a realistic itinerary for this trip. You MUST respond with ONLY valid JSON (no markdown formatting, no comments, just the raw JSON object).
-
-The JSON structure must match exactly this schema:
+You MUST respond ONLY with a valid JSON object matching this schema:
 {{
   "title": "A catchy title for the trip",
   "description": "A short summary of the trip",
-  "estimated_budget": 1500.00,
+  "estimated_budget": 25000.00,
   "stops": [
     {{
-      "destination_name": "City Name",
-      "arrival_date": "YYYY-MM-DD",
-      "departure_date": "YYYY-MM-DD",
+      "destination_name": "{destinations[0] if destinations else 'Destination'}",
+      "arrival_date": "{start_date}",
+      "departure_date": "{end_date}",
       "activities": [
         {{
           "title": "Activity name",
-          "date": "YYYY-MM-DD",
-          "start_time": "HH:MM",
-          "end_time": "HH:MM",
-          "estimated_cost": 50.0,
+          "date": "{start_date}",
+          "start_time": "10:00",
+          "end_time": "13:00",
+          "estimated_cost": 500.0,
           "notes": "Short description of the activity"
         }}
       ]
@@ -73,7 +71,11 @@ The JSON structure must match exactly this schema:
   ]
 }}
 
-Make sure the dates fit between {start_date} and {end_date}. Provide realistic costs based on the budget tier ({budget_tier}). Ensure the response is valid JSON.
+Requirements:
+1. Ensure all stop arrival_date and departure_date strings are in YYYY-MM-DD format and fall strictly between {start_date} and {end_date}.
+2. Ensure every activity date falls strictly within its parent stop's arrival and departure dates.
+3. Provide realistic INR estimated_cost for activities and estimated_budget.
+4. Output strictly valid JSON with no markdown, no thinking blocks, and no commentary.
 """
 
         headers = {
@@ -84,10 +86,10 @@ Make sure the dates fit between {start_date} and {end_date}. Provide realistic c
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "You are a helpful travel assistant that outputs raw JSON matching the exact requested schema."},
+                {"role": "system", "content": "You are a professional travel planning API that outputs strictly valid JSON objects only."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7,
+            "temperature": 0.5,
             "response_format": {"type": "json_object"},
             "max_tokens": 4096
         }
@@ -109,13 +111,10 @@ Make sure the dates fit between {start_date} and {end_date}. Provide realistic c
                 # Strip out thinking process tags (e.g. <think>...</think>) if returned by reasoning models
                 import re
                 content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
-                
-                # Sometimes models wrap JSON in markdown block even when instructed not to
                 match = re.search(r'```(?:json)?\s*(.*?)\s*```', content, re.DOTALL)
                 if match:
                     content = match.group(1).strip()
                 else:
-                    # Fallback to finding the first { and last }
                     start = content.find('{')
                     end = content.rfind('}')
                     if start != -1 and end != -1:

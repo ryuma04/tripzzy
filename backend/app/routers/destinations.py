@@ -15,11 +15,35 @@ from app.repositories.destination_repository import (
 from app.schemas.destination import (
     ActivityCatalogResponse,
     DestinationDetail,
+    DestinationFromPlaceRequest,
     DestinationSearchParams,
     DestinationSummary,
 )
 
 router = APIRouter(prefix="/destinations", tags=["destinations"])
+
+
+@router.post("/from-place", summary="Register or find destination from Google Place")
+async def find_or_create_destination_from_place(
+    payload: DestinationFromPlaceRequest,
+    db: DbSession,
+):
+    """Finds an existing destination or dynamically creates a new one from a Google Place."""
+    repo = DestinationRepository(db)
+    dest = await repo.find_or_create(
+        name=payload.name,
+        country=payload.country,
+        region=payload.region,
+        description=payload.description,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        image_url=payload.image_url,
+    )
+    return responses.success(
+        DestinationSummary.model_validate(dest).model_dump(),
+        "Destination resolved successfully",
+    )
+
 
 
 def _activity_out(activity) -> dict:

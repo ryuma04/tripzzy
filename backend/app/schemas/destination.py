@@ -29,6 +29,16 @@ class DestinationDetail(DestinationSummary):
     top_activities: list["ActivityCatalogResponse"] = []
 
 
+class DestinationFromPlaceRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    country: str = Field(default="India", max_length=100)
+    region: str | None = Field(default=None, max_length=100)
+    description: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    image_url: str | None = Field(default=None, max_length=500)
+
+
 class ActivityCatalogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

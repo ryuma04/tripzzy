@@ -115,6 +115,11 @@ class TripService:
         payload = (await self._decorate([trip]))[0]
         payload["cities"] = await self.repo.cities_for(trip.id)
         payload["cloned_from_trip_id"] = trip.cloned_from_trip_id
+
+        from app.services.itinerary_service import ItineraryService
+        stops = await ItineraryService(self.db).list_stops(trip.id, user)
+        payload["stops"] = stops
+
         await self.db.commit()
         return payload
 

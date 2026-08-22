@@ -18,4 +18,14 @@ export const destinationService = {
 
   getById: (destinationId: string) =>
     apiClient.get<Destination>(`/destinations/${destinationId}`),
+
+  fromPlace: (payload: {
+    name: string;
+    country?: string;
+    region?: string;
+    description?: string;
+    latitude?: number;
+    longitude?: number;
+    image_url?: string;
+  }) => apiClient.post<Destination>("/destinations/from-place", payload),
 };

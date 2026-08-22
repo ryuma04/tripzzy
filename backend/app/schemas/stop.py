@@ -10,10 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.core import validators
 from app.models.enums import ActivityCategory
 from app.schemas.common import Money
+from app.schemas.destination import DestinationSummary
+
 
 
 class StopCreateRequest(BaseModel):
-    city_name: Annotated[str, Field(min_length=2, max_length=100)]
+    city_name: Annotated[str | None, Field(max_length=100)] = None
     arrival_date: date
     departure_date: date
     country: Annotated[str | None, Field(max_length=100)] = None
@@ -24,7 +26,9 @@ class StopCreateRequest(BaseModel):
 
     @field_validator("city_name")
     @classmethod
-    def _city(cls, v: str) -> str:
+    def _city(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         v = v.strip()
         if len(v) < 2:
             raise ValueError("City name must be at least 2 characters")
@@ -175,6 +179,7 @@ class StopResponse(BaseModel):
     id: uuid.UUID
     trip_id: uuid.UUID
     destination_id: uuid.UUID | None = None
+    destination: DestinationSummary | None = None
     city_name: str
     country: str | None = None
     arrival_date: date

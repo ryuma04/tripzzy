@@ -27,7 +27,138 @@ import { TripMap } from "@/components/map";
 import { destinationService } from "@/services/destinations";
 import { activityService } from "@/services/activities";
 import { tripService } from "@/services/trips";
+import { SearchBar } from "@/components/ui/search-bar";
+import { placesService, PlaceSuggestion } from "@/services/places";
+import { resolvePlaceImageUrl } from "@/lib/place-images";
 import type { Destination, Activity } from "@/types";
+
+
+function formatDuration(minutes?: number, hours?: number): string {
+  if (minutes !== undefined && minutes !== null && minutes > 0) {
+    if (minutes < 60) return `${minutes} mins`;
+    const hrs = minutes / 60;
+    return hrs % 1 === 0 ? `${hrs} hours` : `${hrs.toFixed(1)} hours`;
+  }
+  if (hours !== undefined && hours !== null && hours > 0) {
+    return hours % 1 === 0 ? `${hours} hours` : `${hours.toFixed(1)} hours`;
+  }
+  return "3 hours";
+}
+
+const DEFAULT_RECOMMENDED_ACTIVITIES: Activity[] = [
+  {
+    id: "rec-gateway-mumbai",
+    destination_id: "mumbai-dest",
+    destination_name: "Mumbai",
+    title: "Gateway of India & Colaba Heritage Walk",
+    category: "SIGHTSEEING",
+    estimated_cost: 400,
+    duration_hours: 3.0,
+    description: "Explore the iconic arch-monument and historic colonial streets of South Mumbai.",
+    rating: 4.8,
+  },
+  {
+    id: "rec-marine-drive",
+    destination_id: "mumbai-dest",
+    destination_name: "Mumbai",
+    title: "Marine Drive Sunset & Street Food",
+    category: "FOOD & LEISURE",
+    estimated_cost: 350,
+    duration_hours: 2.5,
+    description: "Stroll along Queen's Necklace and enjoy local beach delicacies at Chowpatty.",
+    rating: 4.9,
+  },
+  {
+    id: "rec-elephanta-caves",
+    destination_id: "mumbai-dest",
+    destination_name: "Mumbai",
+    title: "Elephanta Caves Ferry & Tour",
+    category: "HISTORICAL",
+    estimated_cost: 850,
+    duration_hours: 4.5,
+    description: "Scenic ferry ride and guided exploration of UNESCO rock-cut cave temples.",
+    rating: 4.7,
+  },
+  {
+    id: "rec-scuba-goa",
+    destination_id: "goa-dest",
+    destination_name: "Goa",
+    title: "Scuba Diving & Island Trip at Grande Island",
+    category: "ADVENTURE",
+    estimated_cost: 2800,
+    duration_hours: 5.0,
+    description: "Clear-water scuba diving with certified instructors and dolphin sightings.",
+    rating: 4.9,
+  },
+  {
+    id: "rec-chapora-goa",
+    destination_id: "goa-dest",
+    destination_name: "Goa",
+    title: "Chapora Fort Sunset & Vagator Shack Dinner",
+    category: "LEISURE",
+    estimated_cost: 1200,
+    duration_hours: 3.5,
+    description: "Panoramic cliff views of the Arabian Sea followed by beachfront dining.",
+    rating: 4.8,
+  },
+  {
+    id: "rec-beach-trek",
+    destination_id: "goa-dest",
+    destination_name: "Goa / Coastal",
+    title: "5-Beach Cliffside Trek (Kudle to Paradise)",
+    category: "TREKKING",
+    estimated_cost: 500,
+    duration_hours: 4.0,
+    description: "Scenic coastal ridge hiking traversing pristine beaches and rocky promontories.",
+    rating: 4.8,
+  },
+];
+
+function convertGooglePlaceToActivity(place: any, destName: string, destId: string): Activity {
+  const title = place.displayName?.text || place.formattedAddress?.split(",")[0] || "Attraction";
+  const types: string[] = place.types || [];
+  
+  let category = "SIGHTSEEING";
+  let cost = 400;
+  let duration = 3.0;
+
+  if (types.some((t: string) => t.includes("history") || t.includes("museum") || t.includes("monument") || t.includes("place_of_worship"))) {
+    category = "HISTORICAL";
+    cost = 500;
+    duration = 3.0;
+  } else if (types.some((t: string) => t.includes("food") || t.includes("restaurant") || t.includes("cafe") || t.includes("meal"))) {
+    category = "FOOD & LEISURE";
+    cost = 350;
+    duration = 2.5;
+  } else if (types.some((t: string) => t.includes("park") || t.includes("hiking") || t.includes("camp") || t.includes("adventure"))) {
+    category = "ADVENTURE";
+    cost = 1500;
+    duration = 4.5;
+  } else if (types.some((t: string) => t.includes("beach") || t.includes("spa") || t.includes("resort"))) {
+    category = "LEISURE";
+    cost = 600;
+    duration = 3.5;
+  }
+
+  const photoUrl = resolvePlaceImageUrl(title, place.photos);
+
+  return {
+    id: `gplace-${place.id || Math.random().toString(36).substring(2, 9)}`,
+    destination_id: destId,
+    destination_name: destName,
+    title: title,
+    name: title,
+    category: category,
+    description: place.formattedAddress || `${category} experience in ${destName}`,
+    duration_hours: duration,
+    duration_minutes: duration * 60,
+    estimated_cost: cost,
+    image_url: photoUrl,
+    rating: place.rating || 4.8,
+    latitude: place.location?.latitude,
+    longitude: place.location?.longitude,
+  };
+}
 
 export default function CreateTripPage() {
   const router = useRouter();
@@ -37,7 +168,7 @@ export default function CreateTripPage() {
 
   // Available catalog
   const [availableDestinations, setAvailableDestinations] = useState<Destination[]>([]);
-  const [availableActivities, setAvailableActivities] = useState<Activity[]>([]);
+  const [availableActivities, setAvailableActivities] = useState<Activity[]>(DEFAULT_RECOMMENDED_ACTIVITIES);
 
   // Form State
   const [title, setTitle] = useState("Goa & Coastal Route Expedition");
@@ -50,6 +181,126 @@ export default function CreateTripPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Google Places Search State for Wizard Destinations (Step 2)
+  const [placeSearchQuery, setPlaceSearchQuery] = useState("");
+  const [placeSuggestions, setPlaceSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+
+  // Google Places Search State for Step 3 Activities
+  const [activitySearchQuery, setActivitySearchQuery] = useState("");
+  const [activitySuggestions, setActivitySuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isSearchingStep3Activities, setIsSearchingStep3Activities] = useState(false);
+  const [selectedActivityCategory, setSelectedActivityCategory] = useState("all");
+
+  useEffect(() => {
+    if (placeSearchQuery.length < 2) {
+      setPlaceSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await placesService.autocomplete(placeSearchQuery, "in");
+        if (res.success && res.data?.predictions) {
+          setPlaceSuggestions(res.data.predictions);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [placeSearchQuery]);
+
+  // Autocomplete for Step 3 Activities Search
+  useEffect(() => {
+    if (activitySearchQuery.length < 2) {
+      setActivitySuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const destContext = selectedDestinations.map(d => d.name).join(" ");
+        const queryWithContext = `${activitySearchQuery} ${destContext}`.trim();
+        const res = await placesService.autocomplete(queryWithContext, "in");
+        if (res.success && res.data?.predictions) {
+          setActivitySuggestions(res.data.predictions);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activitySearchQuery, selectedDestinations]);
+
+  const handleSelectGooglePlace = async (suggestion: PlaceSuggestion) => {
+    setIsSearchingPlaces(true);
+    setPlaceSearchQuery("");
+    setPlaceSuggestions([]);
+    try {
+      let placeDetails = null;
+      if (suggestion.place_id) {
+        const detailRes = await placesService.getDetails(suggestion.place_id);
+        if (detailRes.success && detailRes.data) {
+          placeDetails = detailRes.data;
+        }
+      }
+
+      if (!placeDetails) {
+        const searchRes = await placesService.search(suggestion.description);
+        if (searchRes.success && searchRes.data?.places && searchRes.data.places.length > 0) {
+          placeDetails = searchRes.data.places[0];
+        }
+      }
+
+      if (placeDetails) {
+        const dest = await placesService.saveAsDestination(placeDetails);
+        if (!selectedDestinations.some((d) => d.id === dest.id || d.name.toLowerCase() === dest.name.toLowerCase())) {
+          setSelectedDestinations((prev) => [...prev, dest]);
+          showToast(`Added "${dest.name}" to route!`, "success");
+        }
+      } else {
+        showToast("Could not retrieve place details.", "error");
+      }
+    } catch (e) {
+      console.error("Failed to add place to route:", e);
+      showToast("Failed to add place to route.", "error");
+    } finally {
+      setIsSearchingPlaces(false);
+    }
+  };
+
+  // Select / Search Google Place as Activity in Step 3
+  const handleSelectStep3PlaceActivity = async (suggestion: PlaceSuggestion) => {
+    setIsSearchingStep3Activities(true);
+    setActivitySearchQuery("");
+    setActivitySuggestions([]);
+    try {
+      let placeDetails = null;
+      if (suggestion.place_id) {
+        const detailRes = await placesService.getDetails(suggestion.place_id);
+        if (detailRes.success && detailRes.data) {
+          placeDetails = detailRes.data;
+        }
+      }
+      if (!placeDetails) {
+        const searchRes = await placesService.search(suggestion.description);
+        if (searchRes.success && searchRes.data?.places && searchRes.data.places.length > 0) {
+          placeDetails = searchRes.data.places[0];
+        }
+      }
+      if (placeDetails) {
+        const firstDest = selectedDestinations[0] || { name: "Destination", id: "temp-dest" };
+        const newAct = convertGooglePlaceToActivity(placeDetails, firstDest.name, firstDest.id);
+        setAvailableActivities((prev) => [newAct, ...prev.filter(a => a.id !== newAct.id)]);
+        setSelectedActivities((prev) => [...prev, newAct]);
+        showToast(`Added "${newAct.title}" to trip activities!`, "success");
+      }
+    } catch (err) {
+      console.error("Failed to add activity place:", err);
+    } finally {
+      setIsSearchingStep3Activities(false);
+    }
+  };
 
   useEffect(() => {
     async function loadCatalog() {
@@ -73,9 +324,15 @@ export default function CreateTripPage() {
           const items = Array.isArray(actsRes.data)
             ? actsRes.data
             : (actsRes.data as any).items || [];
-          setAvailableActivities(items);
           if (items.length > 0) {
-            setSelectedActivities(items.slice(0, 2));
+            // Combine with curated defaults
+            const combined = [...items, ...DEFAULT_RECOMMENDED_ACTIVITIES];
+            const deduped = Array.from(new Map(combined.map(a => [a.title || a.name, a])).values());
+            setAvailableActivities(deduped);
+            setSelectedActivities(deduped.slice(0, 2));
+          } else {
+            setAvailableActivities(DEFAULT_RECOMMENDED_ACTIVITIES);
+            setSelectedActivities(DEFAULT_RECOMMENDED_ACTIVITIES.slice(0, 2));
           }
         }
       } catch (err) {
@@ -85,6 +342,65 @@ export default function CreateTripPage() {
 
     loadCatalog();
   }, []);
+
+  // Fetch relevant activities from Google Places API + DB when user enters Step 3
+  useEffect(() => {
+    async function loadActivitiesForStep() {
+      if (currentStep !== 3 || selectedDestinations.length === 0) return;
+      try {
+        setIsSearchingStep3Activities(true);
+
+        // 1. Fetch DB activities for destinations
+        const dbPromises = selectedDestinations.map((d) =>
+          activityService.search({ destination_id: d.id, limit: 8 } as any)
+        );
+        const dbResults = await Promise.all(dbPromises);
+        const collected: Activity[] = [];
+        for (const res of dbResults) {
+          if (res.success && res.data) {
+            const items = Array.isArray(res.data) ? res.data : (res.data as any).items || [];
+            collected.push(...items);
+          }
+        }
+
+        // 2. Fetch live Google Places tourist attractions for each selected destination
+        const googlePromises = selectedDestinations.map((d) =>
+          placesService.search(`${d.name} top attractions tourist places`)
+        );
+        const googleResults = await Promise.all(googlePromises);
+        googleResults.forEach((res, idx) => {
+          if (res.success && res.data?.places) {
+            const dest = selectedDestinations[idx];
+            res.data.places.slice(0, 5).forEach((p) => {
+              collected.push(convertGooglePlaceToActivity(p, dest.name, dest.id));
+            });
+          }
+        });
+
+        // 3. Fallback to curated recommendations matching destination
+        DEFAULT_RECOMMENDED_ACTIVITIES.forEach((rec) => {
+          const matches = selectedDestinations.some(
+            (d) => rec.destination_name?.toLowerCase().includes(d.name.toLowerCase()) ||
+                   d.name.toLowerCase().includes(rec.destination_name?.toLowerCase() || "")
+          );
+          if (matches || collected.length < 4) {
+            collected.push(rec);
+          }
+        });
+
+        // Deduplicate by title
+        const deduped = Array.from(new Map(collected.map(a => [(a.title || a.name || "").toLowerCase().trim(), a])).values());
+        if (deduped.length > 0) {
+          setAvailableActivities(deduped);
+        }
+      } catch (e) {
+        console.warn("Could not load destination-specific activities", e);
+      } finally {
+        setIsSearchingStep3Activities(false);
+      }
+    }
+    loadActivitiesForStep();
+  }, [currentStep, selectedDestinations]);
 
   // Validation
   const validateStep1 = () => {
@@ -177,15 +493,19 @@ export default function CreateTripPage() {
         const firstStopId = createdStops[0].id;
         for (let j = 0; j < selectedActivities.length; j++) {
           const act = selectedActivities[j];
+          const actTitle = act.title || act.name || "Curated Activity";
+          const cost = typeof act.estimated_cost === "number"
+            ? act.estimated_cost
+            : parseFloat(String(act.estimated_cost || 0));
           try {
             await tripService.addActivity(firstStopId, {
-              title: act.name,
+              title: actTitle,
               date: startDate,
               start_time: "10:00",
               end_time: "13:00",
-              estimated_cost: act.estimated_cost || 0,
+              estimated_cost: isNaN(cost) ? 0 : cost,
               order: j,
-              notes: act.description,
+              notes: act.description || undefined,
             });
           } catch (err) {
             console.warn("Failed to attach activity", act.id, err);
@@ -218,7 +538,7 @@ export default function CreateTripPage() {
         start_date: startDate,
         end_date: endDate,
         budget_tier: budget > 50000 ? "Luxury" : budget > 20000 ? "Moderate" : "Budget",
-        travel_style: selectedActivities.map(a => a.name).join(", ") || "General Sightseeing",
+        travel_style: selectedActivities.map(a => a.title || a.name).join(", ") || "General Sightseeing",
         traveller_count: Number(travellerCount),
       });
 
@@ -383,6 +703,34 @@ export default function CreateTripPage() {
                 <Badge variant="yellow">{selectedDestinations.length} Selected</Badge>
               </div>
 
+              {/* India-Wide Place Search Input */}
+              <div className="relative w-full">
+                <SearchBar
+                  value={placeSearchQuery}
+                  onChange={setPlaceSearchQuery}
+                  placeholder="Search & add any Indian city or landmark (e.g. Marine Drive Mumbai, Taj Mahal, Mysore Palace)..."
+                />
+                {placeSuggestions.length > 0 && (
+                  <div className="absolute z-30 w-full mt-2 bg-white border-[2.5px] border-[#171313] rounded-xl shadow-[4px_4px_0px_#171313] max-h-64 overflow-y-auto">
+                    {placeSuggestions.map((s) => (
+                      <button
+                        key={s.place_id}
+                        type="button"
+                        className="w-full text-left px-4 py-3 border-b border-neutral-100 hover:bg-[#FFF4E6] transition-colors cursor-pointer"
+                        onClick={() => handleSelectGooglePlace(s)}
+                      >
+                        <span className="font-display font-extrabold text-sm text-[#171313] block">
+                          📍 {s.structured_formatting.main_text}
+                        </span>
+                        <span className="text-xs text-neutral-500 font-medium">
+                          {s.structured_formatting.secondary_text || s.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Selected Route Pills */}
               {selectedDestinations.length > 0 && (
                 <div className="p-3 bg-[#FFF4E6] border-2 border-[#171313] rounded-xl flex flex-wrap items-center gap-2">
@@ -399,7 +747,7 @@ export default function CreateTripPage() {
                       </span>
                       <button
                         onClick={() => toggleDestination(d)}
-                        className="hover:text-neutral-200"
+                        className="hover:text-neutral-200 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -432,7 +780,8 @@ export default function CreateTripPage() {
               {/* Destination Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {availableDestinations.map((dest) => {
-                  const isSelected = selectedDestinations.some((d) => d.id === dest.id);
+                  const isSelected = selectedDestinations.some((d) => d.id === dest.id || d.name.toLowerCase() === dest.name.toLowerCase());
+                  const imgUrl = resolvePlaceImageUrl(dest.name, undefined, dest.image_url);
                   return (
                     <div
                       key={dest.id}
@@ -443,14 +792,11 @@ export default function CreateTripPage() {
                           : "bg-white hover:bg-[#FFFAF3] shadow-[2px_2px_0px_#171313]"
                       }`}
                     >
-                      <div className="relative h-32 w-full rounded-lg border-2 border-[#171313] overflow-hidden mb-3">
-                        <Image
-                          src={dest.image_url || "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&auto=format&fit=crop&q=80"}
+                      <div className="relative h-32 w-full rounded-lg border-2 border-[#171313] overflow-hidden mb-3 bg-neutral-100">
+                        <img
+                          src={imgUrl}
                           alt={dest.name}
-                          fill
-                          sizes="250px"
-                          className="object-cover"
-                          unoptimized
+                          className="object-cover w-full h-full"
                         />
                         <span className="absolute top-2 left-2 text-[10px] font-extrabold uppercase px-2 py-0.5 bg-[#FFF4E6] border border-[#171313] rounded text-[#171313]">
                           {dest.region || dest.country}
@@ -495,7 +841,7 @@ export default function CreateTripPage() {
             exit={{ opacity: 0, x: -20 }}
           >
             <NeoCard className="p-6 md:p-8 flex flex-col gap-6">
-              <div className="flex items-center justify-between pb-4 border-b-2 border-[#111111]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b-2 border-[#111111]">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-[#FFB347]" />
                   <div>
@@ -507,64 +853,137 @@ export default function CreateTripPage() {
                     </p>
                   </div>
                 </div>
-                <Badge variant="green">{selectedActivities.length} Activities Added</Badge>
+                <div className="inline-flex items-center px-3 py-1 bg-[#107038] text-white border-2 border-[#111111] rounded-lg text-xs font-extrabold uppercase shadow-[2px_2px_0px_#111111]">
+                  {selectedActivities.length} {selectedActivities.length === 1 ? "ACTIVITY" : "ACTIVITIES"} ADDED
+                </div>
+              </div>
+
+              {/* Google Places Live Search for Activities */}
+              <div className="relative w-full">
+                <SearchBar
+                  value={activitySearchQuery}
+                  onChange={setActivitySearchQuery}
+                  placeholder={`Search spots, monuments, street food or attractions in ${selectedDestinations.map(d => d.name).join(", ") || "destinations"}...`}
+                />
+                {activitySuggestions.length > 0 && (
+                  <div className="absolute z-30 w-full mt-2 bg-white border-[2.5px] border-[#171313] rounded-xl shadow-[4px_4px_0px_#171313] max-h-64 overflow-y-auto">
+                    {activitySuggestions.map((s) => (
+                      <button
+                        key={s.place_id}
+                        type="button"
+                        className="w-full text-left px-4 py-3 border-b border-neutral-100 hover:bg-[#FFF4E6] transition-colors cursor-pointer"
+                        onClick={() => handleSelectStep3PlaceActivity(s)}
+                      >
+                        <span className="font-display font-extrabold text-sm text-[#171313] block">
+                          ✨ {s.structured_formatting?.main_text || s.description}
+                        </span>
+                        <span className="text-xs text-neutral-500 font-medium">
+                          {s.structured_formatting?.secondary_text || s.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: "all", label: "All Suggestions" },
+                  { id: "SIGHTSEEING", label: "Sightseeing" },
+                  { id: "FOOD & LEISURE", label: "Food & Leisure" },
+                  { id: "HISTORICAL", label: "Historical" },
+                  { id: "ADVENTURE", label: "Adventure" },
+                  { id: "LEISURE", label: "Leisure" },
+                  { id: "TREKKING", label: "Trekking" },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedActivityCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-lg border-2 border-[#111111] text-xs font-extrabold uppercase transition-all cursor-pointer ${
+                      selectedActivityCategory === cat.id
+                        ? "bg-[#171313] text-white shadow-[2px_2px_0px_#111111]"
+                        : "bg-white text-[#171313] hover:bg-[#FFF4E6]"
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
               </div>
 
               {/* Activity Recommendations Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {availableActivities.map((act) => {
-                  const isSelected = selectedActivities.some((a) => a.id === act.id);
-                  return (
-                    <div
-                      key={act.id}
-                      onClick={() => toggleActivity(act)}
-                      className={`p-4 rounded-xl border-[3px] border-[#111111] transition-all cursor-pointer select-none flex gap-4 ${
-                        isSelected
-                          ? "bg-[#6EE7B7]/25 shadow-[4px_4px_0px_#111111] -translate-x-0.5 -translate-y-0.5"
-                          : "bg-white hover:bg-neutral-50 shadow-[2px_2px_0px_#111111]"
-                      }`}
-                    >
-                      <div className="relative w-24 h-24 rounded-lg border-2 border-[#111111] overflow-hidden flex-shrink-0">
-                        <Image
-                          src={act.image_url || "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=300&auto=format&fit=crop&q=80"}
-                          alt={act.name || "Activity image"}
-                          fill
-                          sizes="100px"
-                          className="object-cover"
-                          unoptimized
-                        />
-                      </div>
+                {availableActivities
+                  .filter((act) => {
+                    if (selectedActivityCategory === "all") return true;
+                    return (act.category || "").toUpperCase().includes(selectedActivityCategory.toUpperCase());
+                  })
+                  .map((act) => {
+                    const isSelected = selectedActivities.some((a) => a.id === act.id || a.title === act.title);
+                    const title = act.title || act.name || "Curated Experience";
+                    const imgUrl = resolvePlaceImageUrl(title, undefined, act.image_url);
+                    const duration = formatDuration(act.duration_minutes, act.duration_hours);
+                    const cost = typeof act.estimated_cost === "number"
+                      ? act.estimated_cost
+                      : parseFloat(String(act.estimated_cost || 0));
 
-                      <div className="flex flex-col justify-between flex-1">
-                        <div>
-                          <div className="flex items-center justify-between gap-1 mb-1">
-                            <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-neutral-100 border border-[#111111]">
-                              {act.category}
-                            </span>
-                            <span className="font-display font-extrabold text-xs text-[#111111]">
-                              ₹{act.estimated_cost}
+                    return (
+                      <div
+                        key={act.id}
+                        onClick={() => toggleActivity(act)}
+                        className={`p-4 rounded-xl border-[3px] border-[#171313] transition-all cursor-pointer select-none flex gap-4 ${
+                          isSelected
+                            ? "bg-[#B7F4D8] shadow-[4px_4px_0px_#171313] -translate-x-0.5 -translate-y-0.5"
+                            : "bg-white hover:bg-[#FFFAF3] shadow-[2px_2px_0px_#171313]"
+                        }`}
+                      >
+                        <div className="relative w-28 h-28 rounded-lg border-2 border-[#171313] overflow-hidden flex-shrink-0 bg-neutral-100">
+                          <img
+                            src={imgUrl}
+                            alt={title}
+                            className="object-cover w-full h-full"
+                          />
+                        </div>
+
+                        <div className="flex flex-col justify-between flex-1 min-w-0">
+                          <div>
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-neutral-100 border border-[#171313] text-[#171313]">
+                                {act.category || "ACTIVITY"}
+                              </span>
+                              <span className="font-display font-extrabold text-sm text-[#171313]">
+                                ₹{(isNaN(cost) ? 0 : cost).toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                            <h4 className="font-display font-extrabold text-sm text-[#171313] leading-snug line-clamp-2">
+                              {title}
+                            </h4>
+                            <span className="text-xs text-neutral-500 font-medium block mt-1">
+                              Duration: {duration}
                             </span>
                           </div>
-                          <h4 className="font-display font-bold text-sm text-[#111111] leading-tight">
-                            {act.name}
-                          </h4>
-                          <span className="text-[11px] text-neutral-500 block mt-1">
-                            Duration: {act.duration_hours} hours
-                          </span>
-                        </div>
 
-                        <div className="flex justify-end pt-2">
-                          <NeoButton
-                            variant={isSelected ? "green" : "white"}
-                            size="sm"
-                          >
-                            {isSelected ? "Added ✓" : "+ Add to Trip"}
-                          </NeoButton>
+                          <div className="flex justify-end pt-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleActivity(act);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg border-2 border-[#171313] text-xs font-extrabold uppercase transition-all cursor-pointer ${
+                                isSelected
+                                  ? "bg-[#1E7246] text-white shadow-[2px_2px_0px_#171313]"
+                                  : "bg-white hover:bg-neutral-100 text-[#171313] shadow-[2px_2px_0px_#171313]"
+                              }`}
+                            >
+                              {isSelected ? "ADDED ✓" : "+ ADD TO TRIP"}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </NeoCard>
           </motion.div>
@@ -626,7 +1045,11 @@ export default function CreateTripPage() {
                   </div>
                   <div className="flex items-center gap-2 text-xs font-bold">
                     <Sparkles className="w-4 h-4" />
-                    <span>Activities Selected: {selectedActivities.length} planned</span>
+                    <span>
+                      Activities Selected: {selectedActivities.length > 0
+                        ? selectedActivities.map((a) => a.title || a.name).join(", ")
+                        : "None selected"}
+                    </span>
                   </div>
                 </div>
               </div>

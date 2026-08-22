@@ -1,9 +1,4 @@
-"""SMTP delivery, isolated behind one service (refinement R1).
-
-The rest of the application never touches aiosmtplib directly, so email can be
-disabled, stubbed in tests, or swapped for another provider without touching
-the auth flow.
-"""
+"""Email delivery service supporting Google Apps Script Web App and SMTP."""
 
 import logging
 from email.message import EmailMessage
@@ -22,17 +17,51 @@ class EmailService:
     def is_available() -> bool:
         return settings.email_configured
 
-    @staticmethod
-    async def send(to: str, subject: str, body: str, html: str | None = None) -> None:
-        """Send one message via Google Apps Script or SMTP, or raise ``ServiceUnavailableError``.
+    @classmethod
+    async def _send_via_google_script(
+        cls, to: str, subject: str, body: str, html: str | None = None, code: str | None = None
+    ) -> bool:
+        """Send email via Google Apps Script Web App."""
+        if not settings.GOOGLE_APP_SCRIPT_URL:
+            return False
 
-        Never raises a bare exception: callers decide whether a delivery
-        failure should abort their operation.
-        """
-        if not settings.email_configured:
-            raise ServiceUnavailableError(
-                "Email delivery is not configured on this server"
-            )
+        payload = {
+            "to": to,
+            "email": to,
+            "recipient": to,
+            "subject": subject,
+            "body": body,
+            "message": body,
+            "html": html or body,
+            "htmlBody": html or body,
+            "otp": code or "",
+            "code": code or "",
+        }
+
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+                res = await client.post(settings.GOOGLE_APP_SCRIPT_URL, json=payload)
+                if res.status_code == 200:
+                    logger.info("Email delivered to %s via Google Apps Script: %s", to, res.text)
+                    return True
+                else:
+                    logger.warning(
+                        "Google Apps Script returned status %s: %s", res.status_code, res.text
+                    )
+        except Exception as exc:
+            logger.error("Failed to deliver email via Google Apps Script: %s", exc)
+
+        return False
+
+    @staticmethod
+    async def _send_via_smtp(to: str, subject: str, body: str, html: str | None = None) -> None:
+        """Send email via SMTP."""
+        username = settings.EMAIL_SENDER or settings.SMTP_USERNAME
+        password = settings.EMAIL_APP_PASSWORD or settings.SMTP_PASSWORD
+        from_addr = settings.SMTP_FROM_EMAIL or settings.EMAIL_SENDER or settings.SMTP_USERNAME
+
+        if not (settings.SMTP_SERVER and username and password):
+            raise ServiceUnavailableError("SMTP delivery is not configured on this server")
 
         # --- Priority 1: Google Apps Script Webhook ---
         if settings.GOOGLE_APP_SCRIPT_URL:
@@ -74,7 +103,7 @@ class EmailService:
         # --- Priority 2: Direct SMTP ---
         message = EmailMessage()
         message["Subject"] = subject
-        message["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USERNAME}>"
+        message["From"] = f"{settings.SMTP_FROM_NAME} <{from_addr}>"
         message["To"] = to
         message.set_content(body)
         if html:
@@ -85,23 +114,41 @@ class EmailService:
                 message,
                 hostname=settings.SMTP_SERVER,
                 port=settings.SMTP_PORT,
-                username=settings.SMTP_USERNAME,
-                password=settings.SMTP_PASSWORD,
+                username=username,
+                password=password,
                 start_tls=settings.SMTP_START_TLS,
                 timeout=settings.SMTP_TIMEOUT_SECONDS,
             )
-            logger.info("Email sent to %s via SMTP", to)
+            logger.info("Email delivered to %s via SMTP", to)
         except (aiosmtplib.SMTPException, OSError, TimeoutError) as exc:
-            # Log the real cause; tell the client something actionable.
             logger.error("SMTP delivery to %s failed: %s", to, exc)
             raise ServiceUnavailableError(
                 "Could not send the email right now. Please try again shortly."
             ) from exc
 
     @classmethod
+    async def send(
+        cls, to: str, subject: str, body: str, html: str | None = None, code: str | None = None
+    ) -> None:
+        """Send message via Google Apps Script (if configured) or SMTP."""
+        if not settings.email_configured:
+            raise ServiceUnavailableError(
+                "Email delivery is not configured on this server"
+            )
+
+        if settings.GOOGLE_APP_SCRIPT_URL:
+            success = await cls._send_via_google_script(to, subject, body, html, code)
+            if success:
+                return
+
+        # Fallback to SMTP if Google Apps Script wasn't configured or failed
+        await cls._send_via_smtp(to, subject, body, html)
+
+    @classmethod
     async def send_otp(cls, to: str, code: str, first_name: str = "") -> None:
         greeting = f"Hi {first_name}," if first_name else "Hi,"
         minutes = settings.OTP_TTL_MINUTES
+        logger.info("🔐 [DEV LOG] OTP for %s: %s (expires in %d mins)", to, code, minutes)
         body = (
             f"{greeting}\n\n"
             f"Your Tripzyy verification code is {code}.\n"
@@ -116,4 +163,4 @@ class EmailService:
             "<p style='color:#666;font-size:12px'>If you did not create a "
             "Tripzyy account, you can ignore this email.</p>"
         )
-        await cls.send(to, "Your Tripzyy verification code", body, html)
+        await cls.send(to, "Your Tripzyy verification code", body, html, code=code)

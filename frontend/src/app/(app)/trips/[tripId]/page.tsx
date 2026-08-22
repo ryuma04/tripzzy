@@ -271,7 +271,7 @@ export default function TripDetailPage() {
           </div>
         )}
 
-        {activeTab === "builder" && (
+        {(activeTab === "itinerary" || activeTab === "builder") && (
           <ItineraryBuilder trip={trip} onUpdateTrip={setTrip} />
         )}
 

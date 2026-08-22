@@ -42,6 +42,64 @@ class DestinationRepository:
     async def get(self, destination_id: uuid.UUID) -> Destination | None:
         return await self.db.get(Destination, destination_id)
 
+    async def find_or_create(
+        self,
+        *,
+        name: str,
+        country: str = "India",
+        region: str | None = None,
+        description: str | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        image_url: str | None = None,
+    ) -> Destination:
+        name_clean = name.strip()[:120]
+        country_clean = (country or "India").strip()[:100]
+
+        existing = await self.db.scalar(
+            select(Destination).where(
+                func.lower(Destination.name) == name_clean.lower(),
+                func.lower(Destination.country) == country_clean.lower(),
+            )
+        )
+        if existing is not None:
+            updated = False
+            if latitude is not None and existing.latitude is None:
+                existing.latitude = latitude
+                updated = True
+            if longitude is not None and existing.longitude is None:
+                existing.longitude = longitude
+                updated = True
+            if image_url is not None and not existing.image_url:
+                existing.image_url = image_url[:500]
+                updated = True
+            if region is not None and not existing.region:
+                existing.region = region[:100]
+                updated = True
+            if description is not None and not existing.description:
+                existing.description = description
+                updated = True
+            if updated:
+                await self.db.commit()
+                await self.db.refresh(existing)
+            return existing
+
+        new_dest = Destination(
+            name=name_clean,
+            country=country_clean,
+            region=region[:100] if region else None,
+            description=description,
+            latitude=latitude,
+            longitude=longitude,
+            image_url=image_url[:500] if image_url else None,
+            cost_index=3,
+            popularity_score=10,
+        )
+        self.db.add(new_dest)
+        await self.db.commit()
+        await self.db.refresh(new_dest)
+        return new_dest
+
     async def search(
         self,
         *,

@@ -49,7 +49,11 @@ class ItineraryService:
         stop = await self.db.scalar(
             select(TripStop)
             .where(TripStop.id == stop_id)
-            .options(selectinload(TripStop.trip))
+            .options(
+                selectinload(TripStop.trip),
+                selectinload(TripStop.destination),
+                selectinload(TripStop.activities),
+            )
         )
         if stop is None or stop.trip is None or stop.trip.deleted_at is not None:
             raise NotFoundError("Stop")
@@ -140,7 +144,10 @@ class ItineraryService:
                 await self.db.execute(
                     select(TripStop)
                     .where(TripStop.trip_id == trip_id)
-                    .options(selectinload(TripStop.activities))
+                    .options(
+                        selectinload(TripStop.activities),
+                        selectinload(TripStop.destination),
+                    )
                     .order_by(TripStop.order_index)
                 )
             )
@@ -152,10 +159,26 @@ class ItineraryService:
     @staticmethod
     def stop_out(stop: TripStop, *, include_activities: bool = False) -> dict:
         activities = list(stop.activities or [])
+        dest_payload = None
+        if stop.destination is not None:
+            dest_payload = {
+                "id": stop.destination.id,
+                "name": stop.destination.name,
+                "country": stop.destination.country,
+                "region": stop.destination.region,
+                "description": stop.destination.description,
+                "cost_index": stop.destination.cost_index,
+                "popularity_score": stop.destination.popularity_score,
+                "image_url": stop.destination.image_url,
+                "latitude": float(stop.destination.latitude) if stop.destination.latitude is not None else None,
+                "longitude": float(stop.destination.longitude) if stop.destination.longitude is not None else None,
+            }
+
         payload = {
             "id": stop.id,
             "trip_id": stop.trip_id,
             "destination_id": stop.destination_id,
+            "destination": dest_payload,
             "city_name": stop.city_name,
             "country": stop.country,
             "arrival_date": stop.arrival_date,
@@ -183,6 +206,9 @@ class ItineraryService:
             trip, payload.arrival_date, payload.departure_date
         )
 
+        resolved_city_name = payload.city_name
+        resolved_country = payload.country
+
         if payload.destination_id is not None:
             dest = await self.db.get(Destination, payload.destination_id)
             if dest is None:
@@ -190,6 +216,16 @@ class ItineraryService:
                     "That destination does not exist",
                     details={"fields": {"destination_id": "Unknown destination"}},
                 )
+            if not resolved_city_name:
+                resolved_city_name = dest.name
+            if not resolved_country:
+                resolved_country = dest.country
+
+        if not resolved_city_name:
+            raise ValidationError(
+                "City name is required",
+                details={"fields": {"city_name": "City name must be provided or linked to a destination"}},
+            )
 
         if payload.order_index is None:
             next_index = await self.db.scalar(
@@ -212,8 +248,8 @@ class ItineraryService:
         stop = TripStop(
             trip_id=trip_id,
             destination_id=payload.destination_id,
-            city_name=payload.city_name,
-            country=payload.country,
+            city_name=resolved_city_name,
+            country=resolved_country,
             arrival_date=payload.arrival_date,
             departure_date=payload.departure_date,
             order_index=next_index,
@@ -224,7 +260,7 @@ class ItineraryService:
 
         warnings = await self._overlap_warnings(trip_id)
         await self.db.commit()
-        await self.db.refresh(stop, ["activities"])
+        await self.db.refresh(stop, ["activities", "destination"])
         return self.stop_out(stop, include_activities=True), warnings
 
     async def update_stop(

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str | None = None
     SMTP_PASSWORD: str | None = None
     SMTP_FROM_NAME: str = "Tripzyy"
+    SMTP_FROM_EMAIL: str | None = None
+    EMAIL_SENDER: str | None = None
+    EMAIL_APP_PASSWORD: str | None = None
     SMTP_START_TLS: bool = True
     SMTP_TIMEOUT_SECONDS: int = 15
 
@@ -75,7 +78,7 @@ class Settings(BaseSettings):
     # --- AI itinerary generation, Groq (E2, phase P10) ---
     GROQ_API_KEY: str | None = None
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
-    GROQ_MODEL: str = "qwen/qwen3.6-27b"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # --- Google Places API ---
     GOOGLE_PLACES_API: str | None = None
@@ -99,7 +102,9 @@ class Settings(BaseSettings):
         """Email is usable if Google App Script URL or full SMTP credentials are present."""
         if bool(self.GOOGLE_APP_SCRIPT_URL):
             return True
-        return all([self.SMTP_SERVER, self.SMTP_USERNAME, self.SMTP_PASSWORD])
+        username = self.EMAIL_SENDER or self.SMTP_USERNAME
+        password = self.EMAIL_APP_PASSWORD or self.SMTP_PASSWORD
+        return bool(all([self.SMTP_SERVER, username, password]))
 
     @property
     def imagekit_configured(self) -> bool:

@@ -129,32 +129,68 @@ async def generate_trip(
     
     # 4. Create Stops and Activities
     itin_svc = ItineraryService(db)
+    stops_plan = ai_plan.get("stops", [])
+    if not stops_plan:
+        stops_plan = [{"destination_name": d.name, "arrival_date": str(payload.start_date), "departure_date": str(payload.end_date), "activities": []} for d in destinations]
     
-    for i, stop_plan in enumerate(ai_plan.get("stops", [])):
+    for i, stop_plan in enumerate(stops_plan):
         # Try to match destination name
         dest_name = stop_plan.get("destination_name", "")
-        matched_dest = next((d for d in destinations if d.name.lower() in dest_name.lower()), destinations[0])
+        matched_dest = next((d for d in destinations if d.name.lower() in dest_name.lower()), destinations[i % len(destinations)])
         
+        # Clamp dates
+        try:
+            arr = date.fromisoformat(str(stop_plan.get("arrival_date", payload.start_date)))
+        except Exception:
+            arr = payload.start_date
+        try:
+            dep = date.fromisoformat(str(stop_plan.get("departure_date", payload.end_date)))
+        except Exception:
+            dep = payload.end_date
+
+        if arr < payload.start_date:
+            arr = payload.start_date
+        if dep > payload.end_date:
+            dep = payload.end_date
+        if arr > dep:
+            dep = arr
+
         stop_create = StopCreateRequest(
+            city_name=matched_dest.name,
+            country=matched_dest.country or "India",
             destination_id=matched_dest.id,
-            arrival_date=stop_plan.get("arrival_date", str(payload.start_date)),
-            departure_date=stop_plan.get("departure_date", str(payload.end_date)),
-            order=i
+            arrival_date=arr,
+            departure_date=dep,
+            order_index=i
         )
         try:
-            created_stop, _ = await itin_svc.create_stop(trip_id, stop_create, current_user)
+            created_stop, _ = await itin_svc.add_stop(trip_id, stop_create, current_user)
             stop_id = created_stop["id"]
             
             # Create activities for this stop
             for j, act_plan in enumerate(stop_plan.get("activities", [])):
+                act_date_str = act_plan.get("date", arr.isoformat())
+                try:
+                    act_date = date.fromisoformat(str(act_date_str))
+                except Exception:
+                    act_date = arr
+                if act_date < arr:
+                    act_date = arr
+                if act_date > dep:
+                    act_date = dep
+
+                cost = act_plan.get("estimated_cost", 0)
+                try:
+                    cost_val = Decimal(str(cost))
+                except Exception:
+                    cost_val = Decimal("0")
+
                 act_create = ItineraryActivityCreateRequest(
-                    title=act_plan.get("title", "Activity"),
-                    date=act_plan.get("date", str(payload.start_date)),
-                    start_time=act_plan.get("start_time", "10:00"),
-                    end_time=act_plan.get("end_time", "12:00"),
-                    estimated_cost=str(act_plan.get("estimated_cost", 0)),
-                    notes=act_plan.get("notes", ""),
-                    order=j
+                    title=str(act_plan.get("title", "Curated Activity"))[:160],
+                    activity_date=act_date,
+                    estimated_cost=cost_val,
+                    notes=str(act_plan.get("notes", ""))[:2000] if act_plan.get("notes") else None,
+                    order_index=j
                 )
                 await itin_svc.add_activity(stop_id, act_create, current_user)
         except Exception as e:
@@ -220,8 +256,7 @@ async def list_stops(trip_id: uuid.UUID, current_user: CurrentUser, db: DbSessio
 @router.post("/{trip_id}/stops", summary="Add a stop", status_code=201)
 async def add_stop(
     trip_id: uuid.UUID,
-    payload: ItineraryActivityCreateRequest,
-    StopCreateRequest,
+    payload: StopCreateRequest,
     current_user: CurrentUser,
     db: DbSession,
 ):

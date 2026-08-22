@@ -11,7 +11,9 @@ from app.core import validators
 from app.core.config import settings
 from app.models.enums import TripStatus
 from app.schemas.common import Money
+from app.schemas.stop import StopDetail
 from app.schemas.user import PublicUserResponse
+
 
 
 class TripGenerateRequest(BaseModel):
@@ -139,6 +141,7 @@ class TripDetail(TripSummary):
     """Trip overview plus its cities, for the detail screen."""
 
     cities: list[str] = []
+    stops: list[StopDetail] = []
     owner: PublicUserResponse | None = None
     cloned_from_trip_id: uuid.UUID | None = None
 

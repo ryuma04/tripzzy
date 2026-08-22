@@ -8,6 +8,7 @@ interface SearchBarProps {
   onChange: (value: string) => void;
   placeholder?: string;
   onSearch?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   className?: string;
 }
 
@@ -16,9 +17,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onChange,
   placeholder = "Search destinations, cities, or activities...",
   onSearch,
+  onKeyDown,
   className = "",
 }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (onKeyDown) {
+      onKeyDown(e);
+    }
     if (e.key === "Enter" && onSearch) {
       onSearch();
     }

@@ -134,13 +134,16 @@ export interface UpdateTripPayload {
 export interface TripStop {
   id: string;
   trip_id: string;
-  destination_id: string;
-  destination: Destination;
+  destination_id?: string;
+  destination?: Destination;
+  city_name?: string;
+  country?: string;
   arrival_date: string;
   departure_date: string;
   order: number;
+  notes?: string;
   activities: ItineraryActivity[];
-  accommodations: Accommodation[];
+  accommodations?: Accommodation[];
 }
 
 export interface CreateStopPayload {
@@ -200,12 +203,18 @@ export interface Destination {
 export interface Activity {
   id: string;
   destination_id: string;
-  name: string;
+  name?: string;
+  title?: string;
   category: string;
-  description: string;
-  duration_hours: number;
-  estimated_cost: number;
+  description?: string;
+  duration_hours?: number;
+  duration_minutes?: number;
+  estimated_cost: number | string;
+  currency?: string;
   image_url?: string;
+  rating?: number | string;
+  destination_name?: string;
+  country?: string;
   latitude?: number;
   longitude?: number;
 }

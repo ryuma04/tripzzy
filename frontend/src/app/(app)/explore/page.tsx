@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   MapPin,
@@ -15,6 +15,8 @@ import {
   Check,
   Star,
   Globe2,
+  Navigation,
+  Sparkles,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -30,9 +32,11 @@ import { destinationService } from "@/services/destinations";
 import { activityService } from "@/services/activities";
 import { tripService } from "@/services/trips";
 import { placesService, PlaceSuggestion, PlaceDetails } from "@/services/places";
+import { resolvePlaceImageUrl } from "@/lib/place-images";
 import type { Destination, Activity, Trip } from "@/types";
 
 function ExploreContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("q") || searchParams?.get("city") || "";
 
@@ -44,50 +48,82 @@ function ExploreContent() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [userTrips, setUserTrips] = useState<Trip[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedPlaceForTrip, setSelectedPlaceForTrip] = useState<PlaceDetails | null>(null);
   const [isAddToTripOpen, setIsAddToTripOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Google Places State
   const [placesQuery, setPlacesQuery] = useState("");
   const [placesSuggestions, setPlacesSuggestions] = useState<PlaceSuggestion[]>([]);
   const [placesResults, setPlacesResults] = useState<PlaceDetails[]>([]);
   const [isPlacesSearching, setIsPlacesSearching] = useState(false);
   const [placesCategory, setPlacesCategory] = useState("");
+  const [isAddingPlace, setIsAddingPlace] = useState(false);
 
+  // Autocomplete debounce for Google Places across India
   useEffect(() => {
-    if (activeTab !== "google_places" || placesQuery.length < 3) {
+    if (placesQuery.length < 2) {
       setPlacesSuggestions([]);
       return;
     }
     const timer = setTimeout(async () => {
       try {
-        const res = await placesService.autocomplete(placesQuery);
+        const res = await placesService.autocomplete(placesQuery, "in");
         if (res.success && res.data?.predictions) {
           setPlacesSuggestions(res.data.predictions);
         }
       } catch (e) {
-        console.error(e);
+        console.error("Places autocomplete error:", e);
       }
-    }, 500);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [placesQuery, activeTab]);
+  }, [placesQuery]);
 
-  const handleSearchPlaces = async (query: string, type: string) => {
+  // Initial search for places tab
+  const handleSearchPlaces = async (query: string, type?: string) => {
+    if (!query || query.trim().length < 2) return;
     setIsPlacesSearching(true);
+    setPlacesSuggestions([]);
     try {
-      const q = query + (type ? ` ${type}` : "");
-      const res = await placesService.search(q, "tourist_attraction");
+      const q = query.trim();
+      const res = await placesService.search(q, type || undefined);
       if (res.success && res.data?.places) {
         setPlacesResults(res.data.places);
       } else {
+        // If text search returned empty, attempt fetching place details if query is a single place
         setPlacesResults([]);
       }
     } catch (e) {
       console.error(e);
-      showToast("Failed to search places", "error");
+      showToast("Failed to search Google Places", "error");
     } finally {
       setIsPlacesSearching(false);
     }
   };
 
+  const handleSelectSuggestion = async (suggestion: PlaceSuggestion) => {
+    setPlacesQuery(suggestion.description);
+    setPlacesSuggestions([]);
+    setIsPlacesSearching(true);
+
+    try {
+      // First try fetching detailed place info for the place ID
+      if (suggestion.place_id) {
+        const detailRes = await placesService.getDetails(suggestion.place_id);
+        if (detailRes.success && detailRes.data) {
+          setPlacesResults([detailRes.data]);
+          setIsPlacesSearching(false);
+          return;
+        }
+      }
+      // Otherwise fallback to text search
+      await handleSearchPlaces(suggestion.description, placesCategory);
+    } catch (e) {
+      await handleSearchPlaces(suggestion.description, placesCategory);
+    } finally {
+      setIsPlacesSearching(false);
+    }
+  };
 
   useEffect(() => {
     if (initialQuery) setSearchQuery(initialQuery);
@@ -144,9 +180,9 @@ function ExploreContent() {
   const tabs = [
     { id: "all", label: "All Catalog", count: destinations.length + activities.length },
     { id: "map", label: "Interactive Map", count: destinations.length, icon: <MapPin className="w-4 h-4" /> },
+    { id: "google_places", label: "India & Global Places (Google)", count: placesResults.length, icon: <Globe2 className="w-4 h-4" /> },
     { id: "destinations", label: "Destinations & Cities", count: destinations.length },
     { id: "activities", label: "Activities & Tours", count: activities.length },
-    { id: "google_places", label: "Global Discovery (Google)", count: placesResults.length, icon: <Globe2 className="w-4 h-4" /> },
   ];
 
   const filteredDestinations = activeTab === "activities" ? [] : destinations;
@@ -154,29 +190,62 @@ function ExploreContent() {
 
   const handleAddActivityToTrip = (act: Activity) => {
     setSelectedActivity(act);
+    setSelectedPlaceForTrip(null);
+    setIsAddToTripOpen(true);
+  };
+
+  const handleAddPlaceToTrip = (place: PlaceDetails) => {
+    setSelectedPlaceForTrip(place);
+    setSelectedActivity(null);
     setIsAddToTripOpen(true);
   };
 
   const handleConfirmAddToTrip = async (trip: Trip) => {
-    if (!selectedActivity) return;
+    setIsAddingPlace(true);
     try {
-      if (trip.stops && trip.stops.length > 0) {
-        await tripService.addActivity(trip.stops[0].id, {
-          title: selectedActivity.name,
-          date: trip.start_date,
-          start_time: "10:00",
-          end_time: "13:00",
-          estimated_cost: selectedActivity.estimated_cost || 0,
-          order: 99,
-          notes: selectedActivity.description,
+      if (selectedPlaceForTrip) {
+        // 1. Permanently register / find Destination in PostgreSQL
+        const savedDest = await placesService.saveAsDestination(selectedPlaceForTrip);
+
+        // 2. Add Stop to the selected trip
+        const stopRes = await tripService.createStop(trip.id, {
+          destination_id: savedDest.id,
+          arrival_date: trip.start_date,
+          departure_date: trip.end_date,
+          order: (trip.stops?.length || 0) + 1,
         });
-        showToast(`"${selectedActivity.name}" added to "${trip.title}"!`, "success");
-      } else {
-        showToast("Please add at least one stop to that trip first.", "error");
+
+        if (stopRes.success) {
+          showToast(`"${savedDest.name}" added as a stop to "${trip.title}"!`, "success");
+          router.push(`/trips/${trip.id}`);
+        } else {
+          showToast(stopRes.message || "Failed to attach stop to trip.", "error");
+        }
+      } else if (selectedActivity) {
+        const actTitle = selectedActivity.title || selectedActivity.name || "Curated Activity";
+        const cost = typeof selectedActivity.estimated_cost === "number"
+          ? selectedActivity.estimated_cost
+          : parseFloat(String(selectedActivity.estimated_cost || 0));
+        if (trip.stops && trip.stops.length > 0) {
+          await tripService.addActivity(trip.stops[0].id, {
+            title: actTitle,
+            date: trip.start_date,
+            start_time: "10:00",
+            end_time: "13:00",
+            estimated_cost: isNaN(cost) ? 0 : cost,
+            order: 99,
+            notes: selectedActivity.description || undefined,
+          });
+          showToast(`"${actTitle}" added to "${trip.title}"!`, "success");
+          router.push(`/trips/${trip.id}`);
+        } else {
+          showToast("Please add at least one stop to that trip first.", "error");
+        }
       }
-    } catch {
-      showToast("Failed to attach activity to trip.", "error");
+    } catch (err: any) {
+      showToast(err.message || "Failed to attach location to trip.", "error");
     } finally {
+      setIsAddingPlace(false);
       setIsAddToTripOpen(false);
     }
   };
@@ -185,35 +254,97 @@ function ExploreContent() {
     <div className="flex flex-col gap-8">
       {/* ─── Header ─── */}
       <SectionHeader
-        tag="Catalog"
+        tag="Discovery Hub"
         tagColor="red"
-        title="Activity Search & City Discovery"
-        subtitle="Search dynamic destinations across regions, explore curated experiences, and add activities to your itineraries."
+        title="Real Place Search & City Discovery"
+        subtitle="Discover real monuments, beaches, heritage spots across India via Google Places, explore curated catalog stops, and plot trips seamlessly."
       />
 
-      {/* ─── Search & Filter Bar (Wireframe Screen 8 Header) ─── */}
+      {/* ─── Search & Filter Bar ─── */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-[#FFFFFF] p-4 rounded-2xl border-[3px] border-[#171313] shadow-[4px_4px_0px_#171313]">
         <div className="flex-1 max-w-md">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search by city, beach, trek, or heritage..."
-          />
+          {activeTab === "google_places" ? (
+            <div className="relative w-full">
+              <SearchBar
+                value={placesQuery}
+                onChange={setPlacesQuery}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === "Enter") handleSearchPlaces(placesQuery, placesCategory);
+                }}
+                placeholder="Search real places (e.g. Marine Drive Mumbai, Taj Mahal Agra)..."
+              />
+              {placesSuggestions.length > 0 && (
+                <div className="absolute z-30 w-full mt-2 bg-white border-[2.5px] border-[#171313] rounded-xl shadow-[4px_4px_0px_#171313] max-h-72 overflow-y-auto">
+                  {placesSuggestions.map((s) => (
+                    <button
+                      key={s.place_id}
+                      type="button"
+                      className="w-full text-left px-4 py-3 border-b border-neutral-100 hover:bg-[#FFF4E6] transition-colors cursor-pointer"
+                      onClick={() => handleSelectSuggestion(s)}
+                    >
+                      <span className="font-display font-extrabold text-sm text-[#171313] block">
+                        📍 {s.structured_formatting.main_text}
+                      </span>
+                      <span className="text-xs text-neutral-500 font-medium">
+                        {s.structured_formatting.secondary_text || s.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by city, beach, trek, or heritage..."
+            />
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Dropdown
-            value={selectedCategory}
-            onChange={setSelectedCategory}
-            options={[
-              { value: "all", label: "All Categories" },
-              { value: "adventure", label: "Adventure" },
-              { value: "historical", label: "Historical" },
-              { value: "food & leisure", label: "Food & Leisure" },
-              { value: "trekking", label: "Trekking" },
-              { value: "sightseeing", label: "Sightseeing" },
-            ]}
-          />
+          {activeTab === "google_places" ? (
+            <div className="flex items-center gap-2">
+              <Dropdown
+                value={placesCategory}
+                onChange={(val) => {
+                  setPlacesCategory(val);
+                  if (placesQuery) handleSearchPlaces(placesQuery, val);
+                }}
+                options={[
+                  { value: "", label: "All Attractions" },
+                  { value: "tourist_attraction", label: "🏛️ Tourist Attraction" },
+                  { value: "point_of_interest", label: "📍 Points of Interest" },
+                  { value: "natural_feature", label: "🌿 Nature & Beaches" },
+                  { value: "hindu_temple", label: "🛕 Religious & Heritage" },
+                  { value: "restaurant", label: "🍴 Food & Dining" },
+                  { value: "shopping_mall", label: "🛍️ Shopping" },
+                ]}
+              />
+              <NeoButton
+                variant="primary"
+                size="md"
+                onClick={() => handleSearchPlaces(placesQuery, placesCategory)}
+                isLoading={isPlacesSearching}
+                leftIcon={<Search className="w-4 h-4 stroke-[2.5]" />}
+              >
+                Search Places
+              </NeoButton>
+            </div>
+          ) : (
+            <Dropdown
+              value={selectedCategory}
+              onChange={setSelectedCategory}
+              options={[
+                { value: "all", label: "All Categories" },
+                { value: "adventure", label: "Adventure" },
+                { value: "historical", label: "Historical" },
+                { value: "food & leisure", label: "Food & Leisure" },
+                { value: "trekking", label: "Trekking" },
+                { value: "sightseeing", label: "Sightseeing" },
+              ]}
+            />
+          )}
         </div>
       </div>
 
@@ -222,12 +353,139 @@ function ExploreContent() {
         <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
       </div>
 
+      {/* ─── Google Places Discovery Tab ─── */}
+      {activeTab === "google_places" && (
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313]">
+            <div>
+              <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#E51919]">
+                Live Google Places Discovery
+              </span>
+              <h3 className="font-display font-extrabold text-xl text-[#171313]">
+                Real Place Information, Photos & Coordinates
+              </h3>
+            </div>
+            <Badge variant="red">{placesResults.length} Real Places Found</Badge>
+          </div>
+
+          {isPlacesSearching ? (
+            <div className="text-center py-16 bg-white border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313]">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#FFF4E6] border-2 border-[#171313] rounded-xl font-display font-extrabold text-sm shadow-[2px_2px_0px_#171313]">
+                <Sparkles className="w-4 h-4 text-[#E51919] animate-spin" />
+                Discovering real Google Places across India...
+              </div>
+            </div>
+          ) : placesResults.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {placesResults.map((place) => {
+                const placeName = place.displayName?.text || place.formattedAddress || "Place";
+                const imageUrl = resolvePlaceImageUrl(placeName, place.photos);
+                const hasCoords = place.location?.latitude && place.location?.longitude;
+
+                return (
+                  <NeoCard
+                    key={place.id}
+                    interactive
+                    className="p-0 overflow-hidden flex flex-col justify-between bg-white border-[3px] border-[#171313]"
+                  >
+                    {/* Place Photo with Real Fallbacks */}
+                    <div className="relative h-48 w-full border-b-[3px] border-[#171313] bg-neutral-100 overflow-hidden">
+                      <img
+                        src={imageUrl}
+                        alt={placeName}
+                        className="object-cover w-full h-full hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80";
+                        }}
+                      />
+                      {place.rating && (
+                        <span className="absolute top-3 right-3 text-xs font-display font-extrabold flex items-center gap-1 px-2.5 py-1 bg-[#FFF4E6] border-2 border-[#171313] rounded-lg shadow-[2px_2px_0px_#171313]">
+                          <Star className="w-3.5 h-3.5 fill-[#E51919] text-[#E51919]" />
+                          {place.rating} ({place.userRatingCount || 0})
+                        </span>
+                      )}
+                      {hasCoords && (
+                        <span className="absolute bottom-3 left-3 text-[10px] font-display font-extrabold px-2 py-0.5 bg-[#171313] text-[#FFF4E6] rounded border border-white">
+                          📍 {place.location!.latitude.toFixed(4)}, {place.location!.longitude.toFixed(4)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Place Details Content */}
+                    <div className="p-5 flex flex-col flex-1 justify-between gap-4">
+                      <div>
+                        <h4 className="font-display font-extrabold text-xl text-[#171313] leading-snug">
+                          {placeName}
+                        </h4>
+                        <span className="text-xs font-semibold text-neutral-600 block mt-1 line-clamp-2">
+                          {place.formattedAddress}
+                        </span>
+                      </div>
+
+                      <div className="pt-3 border-t-2 border-neutral-100 flex items-center justify-between gap-2">
+                        <NeoButton
+                          variant="yellow"
+                          size="sm"
+                          leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
+                          onClick={() => handleAddPlaceToTrip(place)}
+                        >
+                          Add to Trip
+                        </NeoButton>
+
+                        {place.googleMapsUri && (
+                          <a
+                            href={place.googleMapsUri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 bg-neutral-50 hover:bg-neutral-100 border-2 border-[#171313] rounded-lg shadow-[2px_2px_0px_#171313]"
+                            title="Open in Google Maps"
+                          >
+                            <Navigation className="w-4 h-4 text-[#171313]" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </NeoCard>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-white border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] flex flex-col items-center gap-3">
+              <Globe2 className="w-12 h-12 text-neutral-300" />
+              <h4 className="font-display font-extrabold text-lg text-[#171313]">
+                Search Any Place across India
+              </h4>
+              <p className="text-xs text-neutral-600 max-w-md">
+                Try searching for <strong>Marine Drive Mumbai</strong>, <strong>Taj Mahal Agra</strong>,{" "}
+                <strong>Baga Beach Goa</strong>, <strong>Mysore Palace</strong>, <strong>Lalbagh Bengaluru</strong>, or any Indian city.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                {["Marine Drive Mumbai", "Taj Mahal Agra", "Baga Beach Goa", "Mysore Palace", "Lalbagh Bengaluru"].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setPlacesQuery(s);
+                      handleSearchPlaces(s);
+                    }}
+                    className="px-3 py-1 bg-[#FFF4E6] border-2 border-[#171313] rounded-lg text-xs font-display font-bold shadow-[2px_2px_0px_#171313] hover:-translate-y-0.5 transition-transform cursor-pointer"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── Map View Tab ─── */}
       {activeTab === "map" && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between p-4 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313]">
             <div>
-              <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#D94B3D]">
+              <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#E51919]">
                 Geographic Catalog Discovery
               </span>
               <h3 className="font-display font-extrabold text-xl text-[#171313]">
@@ -240,41 +498,38 @@ function ExploreContent() {
           <TripMap
             destinations={filteredDestinations}
             activities={filteredActivities}
-            height="560px"
+            height="580px"
             showControls={true}
             showLegend={true}
           />
         </div>
       )}
 
-      {/* ─── Destinations Section (Wireframe Option & Details cards) ─── */}
+      {/* ─── Destinations Section ─── */}
       {activeTab !== "activities" && activeTab !== "map" && activeTab !== "google_places" && filteredDestinations.length > 0 && (
         <div className="flex flex-col gap-4">
           <h3 className="font-display font-extrabold text-lg uppercase tracking-wide text-neutral-800 flex items-center gap-2">
-            <Globe2 className="w-5 h-5 text-[#D94B3D]" />
+            <Globe2 className="w-5 h-5 text-[#E51919]" />
             Destinations & Regional Stops ({filteredDestinations.length})
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredDestinations.map((dest) => (
-              <NeoCard key={dest.id} interactive className="p-0 overflow-hidden flex flex-col justify-between">
-                <div className="relative h-44 w-full border-b-[3px] border-[#111111] bg-neutral-100">
-                  <Image
-                    src={dest.image_url || "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=600&auto=format&fit=crop&q=80"}
+              <NeoCard key={dest.id} interactive className="p-0 overflow-hidden flex flex-col justify-between bg-white border-[3px] border-[#171313]">
+                <div className="relative h-44 w-full border-b-[3px] border-[#171313] bg-neutral-100">
+                  <img
+                    src={resolvePlaceImageUrl(dest.name, undefined, dest.image_url)}
                     alt={dest.name}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 400px"
-                    className="object-cover"
-                    unoptimized
+                    className="object-cover w-full h-full"
                   />
-                  <span className="absolute top-3 left-3 text-[10px] font-extrabold uppercase px-2.5 py-1 bg-[#FFD54A] border-2 border-[#111111] rounded-md shadow-[2px_2px_0px_#111111]">
-                    {dest.region}
+                  <span className="absolute top-3 left-3 text-[10px] font-display font-extrabold uppercase px-2.5 py-1 bg-[#FFF4E6] border-2 border-[#171313] rounded-lg shadow-[2px_2px_0px_#171313]">
+                    {dest.region || dest.country}
                   </span>
                 </div>
 
                 <div className="p-5 flex flex-col flex-1 justify-between gap-3">
                   <div>
-                    <h4 className="font-display font-extrabold text-xl text-[#111111]">
+                    <h4 className="font-display font-extrabold text-xl text-[#171313]">
                       {dest.name}
                     </h4>
                     <span className="text-xs font-bold text-neutral-500 block mb-2">
@@ -299,219 +554,137 @@ function ExploreContent() {
         </div>
       )}
 
-      {/* ─── Activities Section (Wireframe Option and its details) ─── */}
+      {/* ─── Activities Section ─── */}
       {activeTab !== "destinations" && activeTab !== "google_places" && filteredActivities.length > 0 && (
         <div className="flex flex-col gap-4 mt-4">
           <h3 className="font-display font-extrabold text-lg uppercase tracking-wide text-neutral-800 flex items-center gap-2">
-            <Compass className="w-5 h-5 text-[#FFB347]" />
+            <Compass className="w-5 h-5 text-[#E51919]" />
             Curated Activities & Experiences ({filteredActivities.length})
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredActivities.map((act) => (
-              <div
-                key={act.id}
-                className="neo-card-interactive p-4 md:p-5 flex flex-col sm:flex-row gap-4 bg-[#FFFFFF]"
-              >
-                <div className="relative w-full sm:w-32 h-32 rounded-xl border-2 border-[#111111] overflow-hidden flex-shrink-0 bg-neutral-100">
-                  <Image
-                    src={act.image_url || "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=300&auto=format&fit=crop&q=80"}
-                    alt={act.name}
-                    fill
-                    sizes="150px"
-                    className="object-cover"
-                    unoptimized
-                  />
-                  <span className="absolute top-2 left-2 text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-white border border-[#111111] rounded">
-                    {act.category}
-                  </span>
-                </div>
+            {filteredActivities.map((act) => {
+              const title = act.title || act.name || "Curated Experience";
+              const cost = typeof act.estimated_cost === "number"
+                ? act.estimated_cost
+                : parseFloat(String(act.estimated_cost || 0));
+              const durationStr = act.duration_minutes
+                ? (act.duration_minutes < 60 ? `${act.duration_minutes} mins` : `${(act.duration_minutes / 60) % 1 === 0 ? act.duration_minutes / 60 : (act.duration_minutes / 60).toFixed(1)} hours`)
+                : (act.duration_hours ? `${act.duration_hours} hours` : "2 hours");
 
-                <div className="flex flex-col justify-between flex-1 gap-2">
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-display font-extrabold text-base text-[#111111] leading-snug">
-                        {act.name}
-                      </h4>
-                      <span className="font-display font-extrabold text-base text-[#111111] whitespace-nowrap">
-                        ₹{act.estimated_cost}
-                      </span>
-                    </div>
-
-                    <p className="text-xs font-medium text-neutral-600 line-clamp-2 mt-1">
-                      {act.description}
-                    </p>
-
-                    <div className="flex items-center gap-3 text-xs font-bold text-neutral-500 mt-2">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        {act.duration_hours} hours
-                      </span>
-                    </div>
+              return (
+                <div
+                  key={act.id}
+                  className="neo-card-interactive p-4 md:p-5 flex flex-col sm:flex-row gap-4 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313]"
+                >
+                  <div className="relative w-full sm:w-32 h-32 rounded-xl border-2 border-[#171313] overflow-hidden flex-shrink-0 bg-neutral-100">
+                    <img
+                      src={resolvePlaceImageUrl(title, undefined, act.image_url)}
+                      alt={title}
+                      className="object-cover w-full h-full"
+                    />
+                    <span className="absolute top-2 left-2 text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-white border border-[#171313] rounded">
+                      {act.category}
+                    </span>
                   </div>
 
-                  <div className="flex justify-end pt-2">
-                    <NeoButton
-                      variant="yellow"
-                      size="sm"
-                      leftIcon={<Plus className="w-3.5 h-3.5" />}
-                      onClick={() => handleAddActivityToTrip(act)}
-                    >
-                      Add to Trip
-                    </NeoButton>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-
-      {/* ─── Google Places Discovery Tab ─── */}
-      {activeTab === "google_places" && (
-        <div className="flex flex-col gap-6 mt-4">
-          <div className="flex flex-col md:flex-row items-start gap-4">
-            <div className="relative flex-1 w-full">
-              <SearchBar
-                value={placesQuery}
-                onChange={setPlacesQuery}
-                placeholder="Search any global city or region (e.g., Mumbai, Paris)..."
-              />
-              {placesSuggestions.length > 0 && (
-                <div className="absolute z-10 w-full mt-2 bg-white border-2 border-[#111] rounded-xl shadow-[4px_4px_0px_#111]">
-                  {placesSuggestions.map(s => (
-                    <button
-                      key={s.place_id}
-                      className="w-full text-left px-4 py-3 border-b border-neutral-100 hover:bg-[#FFFAF3] transition-colors"
-                      onClick={() => {
-                        setPlacesQuery(s.description);
-                        setPlacesSuggestions([]);
-                        handleSearchPlaces(s.description, placesCategory);
-                      }}
-                    >
-                      <span className="font-bold text-[#111] block">{s.structured_formatting.main_text}</span>
-                      <span className="text-xs text-neutral-500">{s.structured_formatting.secondary_text}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <Dropdown
-              value={placesCategory}
-              onChange={(val) => {
-                setPlacesCategory(val);
-                if (placesQuery) handleSearchPlaces(placesQuery, val);
-              }}
-              options={[
-                { value: "", label: "All Attractions" },
-                { value: "Adventure", label: "🏔️ Adventure" },
-                { value: "Nature", label: "🌿 Nature" },
-                { value: "Historical", label: "🏛️ Historical" },
-                { value: "Beaches", label: "🏖️ Beaches" },
-                { value: "Religious", label: "🛕 Religious" },
-                { value: "Food", label: "🍴 Food" },
-                { value: "Shopping", label: "🛍️ Shopping" },
-              ]}
-            />
-          </div>
-
-          {isPlacesSearching ? (
-            <div className="text-center py-12 font-bold text-neutral-500">Searching Google Places...</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {placesResults.map((place) => (
-                <NeoCard key={place.id} interactive className="p-0 overflow-hidden flex flex-col justify-between">
-                  <div className="relative h-44 w-full border-b-[3px] border-[#111111] bg-neutral-100 flex items-center justify-center">
-                    {place.photos && place.photos.length > 0 ? (
-                      <img
-                        src={`https://places.googleapis.com/v1/${place.photos[0].name}/media?maxHeightPx=400&maxWidthPx=400&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}`}
-                        alt={place.displayName.text}
-                        className="object-cover w-full h-full"
-                      />
-                    ) : (
-                      <Globe2 className="w-12 h-12 text-neutral-300" />
-                    )}
-                    {place.rating && (
-                      <span className="absolute top-3 right-3 text-xs font-extrabold flex items-center gap-1 px-2.5 py-1 bg-[#FFD54A] border-2 border-[#111111] rounded-md shadow-[2px_2px_0px_#111111]">
-                        <Star className="w-3.5 h-3.5 fill-[#111]" />
-                        {place.rating} ({place.userRatingCount || 0})
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-5 flex flex-col flex-1 justify-between gap-3">
+                  <div className="flex flex-col justify-between flex-1 gap-2">
                     <div>
-                      <h4 className="font-display font-extrabold text-xl text-[#111111]">
-                        {place.displayName.text}
-                      </h4>
-                      <span className="text-xs font-bold text-neutral-500 block mb-2 line-clamp-2">
-                        {place.formattedAddress}
-                      </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-display font-extrabold text-base text-[#171313] leading-snug">
+                          {title}
+                        </h4>
+                        <span className="font-display font-extrabold text-base text-[#E51919] whitespace-nowrap">
+                          ₹{(isNaN(cost) ? 0 : cost).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+
+                      {act.destination_name && (
+                        <span className="text-[11px] font-bold text-neutral-500 block mt-0.5">
+                          📍 {act.destination_name}
+                        </span>
+                      )}
+
+                      <p className="text-xs font-medium text-neutral-600 line-clamp-2 mt-1">
+                        {act.description}
+                      </p>
+
+                      <div className="flex items-center gap-3 text-xs font-bold text-neutral-500 mt-2">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          {durationStr}
+                        </span>
+                      </div>
                     </div>
-                    <div className="pt-3 border-t-2 border-neutral-100">
-                      <NeoButton variant="yellow" size="sm" leftIcon={<Plus className="w-4 h-4" />} onClick={() => handleAddActivityToTrip({
-                        id: place.id,
-                        name: place.displayName.text,
-                        description: place.formattedAddress,
-                        estimated_cost: 0,
-                        duration_hours: 2,
-                        category: placesCategory || "Attraction"
-                      } as Activity)}>
+
+                    <div className="flex justify-end pt-2">
+                      <NeoButton
+                        variant="yellow"
+                        size="sm"
+                        leftIcon={<Plus className="w-3.5 h-3.5" />}
+                        onClick={() => handleAddActivityToTrip(act)}
+                      >
                         Add to Trip
                       </NeoButton>
                     </div>
                   </div>
-                </NeoCard>
-              ))}
-            </div>
-          )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Add Activity to Trip Modal */}
-      {selectedActivity && (
-        <Modal
-          isOpen={isAddToTripOpen}
-          onClose={() => setIsAddToTripOpen(false)}
-          title="Add to Itinerary"
-          subtitle={`Select which trip to add "${selectedActivity.name}"`}
-          maxWidth="md"
-        >
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-semibold text-neutral-600">
-              Select one of your existing upcoming or draft trips:
-            </p>
+      {/* ─── Add Location / Activity to Trip Modal ─── */}
+      <Modal
+        isOpen={isAddToTripOpen}
+        onClose={() => setIsAddToTripOpen(false)}
+        title="Add to Trip Itinerary"
+        subtitle={
+          selectedPlaceForTrip
+            ? `Attach "${selectedPlaceForTrip.displayName?.text || selectedPlaceForTrip.formattedAddress}" as a destination stop`
+            : `Select which trip to add "${selectedActivity?.name}"`
+        }
+        maxWidth="md"
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-semibold text-neutral-600">
+            Select one of your existing upcoming or draft trips:
+          </p>
 
-            <div className="flex flex-col gap-2">
-              {userTrips.length > 0 ? (
-                userTrips.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => handleConfirmAddToTrip(t)}
-                    className="flex items-center justify-between p-3.5 bg-neutral-50 border-2 border-[#111111] rounded-xl hover:bg-[#FFD54A]/30 transition-colors text-left cursor-pointer"
-                  >
-                    <div>
-                      <h5 className="font-display font-extrabold text-sm text-[#111111]">
-                        {t.title}
-                      </h5>
-                      <span className="text-xs text-neutral-600">
-                        {t.start_date} → {t.end_date} • {t.stops?.length || 0} stops
-                      </span>
-                    </div>
-                    <NeoButton variant="white" size="sm">
-                      Select
-                    </NeoButton>
-                  </button>
-                ))
-              ) : (
-                <div className="p-4 text-center text-xs text-neutral-500 font-bold">
-                  No expeditions found. Create a trip first!
-                </div>
-              )}
-            </div>
+          <div className="flex flex-col gap-2">
+            {userTrips.length > 0 ? (
+              userTrips.map((t) => (
+                <button
+                  key={t.id}
+                  disabled={isAddingPlace}
+                  onClick={() => handleConfirmAddToTrip(t)}
+                  className="flex items-center justify-between p-3.5 bg-white border-2 border-[#171313] rounded-xl hover:bg-[#FFF4E6] transition-colors text-left cursor-pointer shadow-[2px_2px_0px_#171313]"
+                >
+                  <div>
+                    <h5 className="font-display font-extrabold text-sm text-[#171313]">
+                      {t.title}
+                    </h5>
+                    <span className="text-xs text-neutral-600 font-medium">
+                      {t.start_date} → {t.end_date} • {t.stops?.length || 0} stops
+                    </span>
+                  </div>
+                  <NeoButton variant="cream" size="sm">
+                    {isAddingPlace ? "Adding..." : "Select"}
+                  </NeoButton>
+                </button>
+              ))
+            ) : (
+              <div className="p-6 text-center text-xs text-neutral-500 font-bold bg-neutral-50 border-2 border-[#171313] rounded-xl">
+                No existing trips found.{" "}
+                <Link href="/trips/new" className="text-[#E51919] underline font-extrabold ml-1">
+                  Create a new trip first!
+                </Link>
+              </div>
+            )}
           </div>
-        </Modal>
-      )}
+        </div>
+      </Modal>
     </div>
   );
 }

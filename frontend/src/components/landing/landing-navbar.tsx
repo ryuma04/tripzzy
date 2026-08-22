@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowRight, Compass, Sparkles } from "lucide-react";
+import { Menu, X, ArrowRight } from "lucide-react";
 import { NeoButton } from "@/components/ui/neo-button";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
 
@@ -12,52 +12,57 @@ export const LandingNavbar: React.FC = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-[#FFF5E9]/95 backdrop-blur-md border-b-[3px] border-[#171313] px-4 sm:px-8 lg:px-12 py-3.5 select-none transition-all">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-50 w-full bg-[#FFF5E9]/95 backdrop-blur-md border-b-[3px] border-[#171313] px-6 sm:px-10 lg:px-16 py-4 select-none">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-6">
           {/* LEFT: Official Tripzyy Logo */}
           <Link
             href="/"
-            className="flex items-center p-1.5 px-3 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform"
+            className="flex items-center gap-2 hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform"
           >
             <TripzyyLogo size="md" />
           </Link>
 
-          {/* CENTER: Minimal & Clean Navigation */}
-          <nav className="hidden md:flex items-center gap-8 font-display font-black text-xs uppercase tracking-wider text-[#171313]">
+          {/* CENTER: Minimal & Clean Navigation Matching Reference */}
+          <nav className="hidden md:flex items-center gap-10 font-display font-black text-xs sm:text-sm uppercase tracking-wider text-[#171313]">
             <Link
               href="/explore"
-              className="hover:text-[#E51919] transition-colors flex items-center gap-1.5"
+              className="hover:text-[#D94B3D] transition-colors"
             >
-              <span>Explore Routes</span>
+              EXPLORE ROUTES
             </Link>
             <Link
               href="/community"
-              className="hover:text-[#E51919] transition-colors flex items-center gap-1.5"
+              className="hover:text-[#D94B3D] transition-colors"
             >
-              <span>Community Feed</span>
+              COMMUNITY FEED
             </Link>
             <Link
               href="/calendar"
-              className="hover:text-[#E51919] transition-colors flex items-center gap-1.5"
+              className="hover:text-[#D94B3D] transition-colors"
             >
-              <span>Schedule</span>
+              SCHEDULE
             </Link>
           </nav>
 
-          {/* RIGHT: Neo-Brutalist Auth CTAs */}
-          <div className="hidden sm:flex items-center gap-3">
+          {/* RIGHT: Neo-Brutalist Auth CTAs Matching Reference */}
+          <div className="hidden sm:flex items-center gap-4">
             <Link href="/login">
-              <NeoButton variant="white" size="sm">
-                Sign In
+              <NeoButton
+                variant="white"
+                size="sm"
+                className="py-2.5 px-6 font-black uppercase text-xs tracking-wider shadow-[3px_3px_0px_#171313]"
+              >
+                SIGN IN
               </NeoButton>
             </Link>
             <Link href="/register">
               <NeoButton
                 variant="primary"
                 size="sm"
-                rightIcon={<ArrowRight className="w-4 h-4" />}
+                rightIcon={<ArrowRight className="w-4 h-4 stroke-[3]" />}
+                className="py-2.5 px-6 font-black uppercase text-xs tracking-wider bg-[#D94B3D] hover:bg-[#A8322A] text-white shadow-[3px_3px_0px_#171313]"
               >
-                Sign Up
+                SIGN UP
               </NeoButton>
             </Link>
           </div>
@@ -65,13 +70,13 @@ export const LandingNavbar: React.FC = () => {
           {/* MOBILE TOGGLE */}
           <div className="flex sm:hidden items-center gap-2">
             <Link href="/login">
-              <NeoButton variant="white" size="sm" className="px-2.5 py-1 text-[11px]">
-                Sign In
+              <NeoButton variant="white" size="sm" className="px-3 py-1.5 text-xs font-black">
+                SIGN IN
               </NeoButton>
             </Link>
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 rounded-xl border-[2.5px] border-[#171313] bg-[#E51919] text-white shadow-[2px_2px_0px_#171313] cursor-pointer"
+              className="p-2 rounded-xl border-[2.5px] border-[#171313] bg-[#D94B3D] text-white shadow-[2px_2px_0px_#171313] cursor-pointer"
               aria-label="Toggle Menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -114,33 +119,33 @@ export const LandingNavbar: React.FC = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="p-3 bg-[#FFFFFF] border-2 border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:bg-[#FAECDC]"
                 >
-                  Explore Regional Circuits
+                  EXPLORE ROUTES
                 </Link>
                 <Link
                   href="/community"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="p-3 bg-[#FFFFFF] border-2 border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:bg-[#FAECDC]"
                 >
-                  Community Expeditions
+                  COMMUNITY FEED
                 </Link>
                 <Link
                   href="/calendar"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="p-3 bg-[#FFFFFF] border-2 border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:bg-[#FAECDC]"
                 >
-                  Travel Calendar Timeline
+                  SCHEDULE
                 </Link>
               </div>
 
               <div className="flex flex-col gap-2.5 pt-3 border-t-2 border-[#171313]">
                 <Link href="/register" onClick={() => setIsMobileMenuOpen(false)}>
-                  <NeoButton variant="primary" size="md" className="w-full">
-                    Sign Up Free
+                  <NeoButton variant="primary" size="md" className="w-full bg-[#D94B3D] text-white">
+                    SIGN UP →
                   </NeoButton>
                 </Link>
                 <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
                   <NeoButton variant="white" size="md" className="w-full">
-                    Sign In
+                    SIGN IN
                   </NeoButton>
                 </Link>
               </div>

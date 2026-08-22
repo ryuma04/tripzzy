@@ -21,64 +21,71 @@ import { mockDestinations } from "@/data/mock";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#FFF5E9] text-[#171313] flex flex-col selection:bg-[#E51919] selection:text-white">
-      {/* ─── 🧭 TOP NAVIGATION ─── */}
+    <div className="min-h-screen bg-[#FFF5E9] text-[#171313] flex flex-col selection:bg-[#D94B3D] selection:text-white">
+      {/* ─── 🧭 TOP NAVIGATION (MATCHING REFERENCE) ─── */}
       <LandingNavbar />
 
-      {/* ─── 🌍 HERO SECTION — MAIN EXPERIENCE ─── */}
-      <section className="relative px-4 sm:px-8 lg:px-12 pt-10 sm:pt-16 pb-14 sm:pb-24 max-w-7xl mx-auto w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-          {/* LEFT: Clean, Confident Editorial Typography & Action (5 Columns) */}
+      {/* ─── 🌍 HERO SECTION — RECREATION OF REFERENCE IMAGE ─── */}
+      <section className="relative px-6 sm:px-10 lg:px-16 pt-8 sm:pt-12 pb-12 sm:pb-16 max-w-7xl mx-auto w-full overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-4 items-center">
+          {/* LEFT: Exact Reference Typography & Action Composition (5 Columns) */}
           <motion.div
-            initial={{ opacity: 0, x: -24 }}
+            initial={{ opacity: 0, x: -25 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
-            className="lg:col-span-5 flex flex-col items-start"
+            className="lg:col-span-5 flex flex-col items-start z-10"
           >
-            {/* Main Headline */}
-            <h1 className="font-display font-black text-4xl sm:text-6xl lg:text-[62px] xl:text-[70px] text-[#171313] tracking-[-0.04em] leading-[0.98] uppercase mb-6">
+            {/* Main Headline Matching Reference */}
+            <h1 className="font-display font-black text-5xl sm:text-7xl lg:text-[72px] xl:text-[82px] text-[#171313] tracking-[-0.04em] leading-[0.94] uppercase mb-6">
               YOUR NEXT <br />
-              <span className="text-[#E51919]">
-                ADVENTURE
-              </span> <br />
-              STARTS HERE.
+              <span className="text-[#D94B3D]">ADVENTURE</span> <br />
+              STARTS HERE<span className="text-[#D94B3D]">.</span>
             </h1>
 
-            {/* Short Supporting Sentence */}
-            <p className="text-base sm:text-lg font-medium text-neutral-700 leading-relaxed max-w-md mb-8">
-              Plan unforgettable journeys, one destination at a time.
+            {/* Subtext Matching Reference */}
+            <p className="text-base sm:text-lg font-medium text-neutral-700 leading-snug mb-8 max-w-sm">
+              Plan unforgettable journeys,<br />
+              one destination at a time.
             </p>
 
-            {/* Primary & Secondary CTAs */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
+            {/* CTAs Matching Reference */}
+            <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
               <Link href="/register">
                 <NeoButton
                   variant="primary"
                   size="lg"
                   rightIcon={<ArrowRight className="w-5 h-5 stroke-[2.5]" />}
-                  className="w-full sm:w-auto text-sm sm:text-base py-3.5 px-8 shadow-[5px_5px_0px_#171313]"
+                  className="py-3.5 sm:py-4 px-6 sm:px-7 text-xs sm:text-sm font-black tracking-wider uppercase bg-[#D94B3D] hover:bg-[#A8322A] text-white shadow-[4px_4px_0px_#171313]"
                 >
-                  Start Planning
+                  START PLANNING
                 </NeoButton>
               </Link>
               <Link href="/explore">
                 <NeoButton
                   variant="white"
                   size="lg"
-                  className="w-full sm:w-auto text-sm sm:text-base py-3.5 px-6"
+                  className="py-3.5 sm:py-4 px-6 sm:px-7 text-xs sm:text-sm font-black tracking-wider uppercase shadow-[4px_4px_0px_#171313]"
                 >
-                  Explore Circuits
+                  EXPLORE ROUTES
                 </NeoButton>
               </Link>
             </div>
+
+            {/* SCROLL TO EXPLORE ↓ Indicator Matching Reference */}
+            <div className="mt-12 sm:mt-16 flex flex-col items-start gap-1 text-[11px] font-display font-black uppercase tracking-widest text-[#171313]">
+              <span>SCROLL TO EXPLORE</span>
+              <span className="text-[#D94B3D] text-base leading-none font-black animate-bounce">
+                ↓
+              </span>
+            </div>
           </motion.div>
 
-          {/* RIGHT: THE EXPANSIVE INTERACTIVE TRAVEL MOTION SCENE (7 Columns ~ 55% Width) */}
+          {/* RIGHT: THE COMPLETE TRAVEL SCENE (7 Columns) */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
+            initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.7, delay: 0.15, ease: "easeOut" }}
-            className="lg:col-span-7 w-full flex justify-center"
+            className="lg:col-span-7 w-full flex justify-center items-center relative"
           >
             <TravelMotionScene />
           </motion.div>
@@ -86,29 +93,29 @@ export default function LandingPage() {
       </section>
 
       {/* ─── 🟥 BRAND MOMENT MARQUEE RIBBON ─── */}
-      <section className="bg-[#171313] text-[#FFF5E9] border-y-[4px] border-[#171313] py-4 select-none overflow-hidden">
-        <div className="flex items-center gap-10 whitespace-nowrap font-display font-black text-sm sm:text-base uppercase tracking-widest animate-[marquee_20s_linear_infinite]">
+      <section className="bg-[#171313] text-[#FFF5E9] border-y-[4px] border-[#171313] py-3.5 select-none overflow-hidden">
+        <div className="flex items-center gap-10 whitespace-nowrap font-display font-black text-xs sm:text-sm uppercase tracking-widest animate-[marquee_20s_linear_infinite]">
           <span>PLAN</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
           <span>EXPLORE</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
           <span>GO</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
           <span>ONE EXPEDITION • ENDLESS STORIES</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
           <span>INTERACTIVE ROUTE POLYLINES</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
           <span>REAL-TIME EXPENSE TRACKING</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
           <span>1-CLICK COMMUNITY CLONING</span>
-          <span className="text-[#E51919]">✦</span>
+          <span className="text-[#D94B3D]">✦</span>
         </div>
       </section>
 
       {/* ─── 📊 3 COMPACT PILLARS SECTION ─── */}
-      <section className="px-4 sm:px-8 lg:px-12 py-16 max-w-7xl mx-auto w-full">
+      <section className="px-6 sm:px-10 lg:px-16 py-16 max-w-7xl mx-auto w-full">
         <div className="text-center max-w-2xl mx-auto mb-12">
-          <span className="inline-block px-3 py-1 rounded-lg border-2 border-[#171313] bg-[#E51919] text-white font-display font-black text-[11px] uppercase tracking-wider shadow-[2px_2px_0px_#171313] mb-3">
+          <span className="inline-block px-3 py-1 rounded-lg border-2 border-[#171313] bg-[#D94B3D] text-white font-display font-black text-[11px] uppercase tracking-wider shadow-[2px_2px_0px_#171313] mb-3">
             Core Workflow
           </span>
           <h2 className="font-display font-black text-3xl sm:text-4xl md:text-5xl text-[#171313] tracking-tight uppercase">
@@ -120,10 +127,10 @@ export default function LandingPage() {
           {/* Card 1 */}
           <NeoCard className="p-7 bg-[#FFFFFF] border-[3px] border-[#171313] shadow-[5px_5px_0px_#171313] flex flex-col justify-between">
             <div>
-              <div className="w-12 h-12 rounded-2xl bg-[#E51919] text-white border-2 border-[#171313] flex items-center justify-center shadow-[3px_3px_0px_#171313] mb-5">
+              <div className="w-12 h-12 rounded-2xl bg-[#D94B3D] text-white border-2 border-[#171313] flex items-center justify-center shadow-[3px_3px_0px_#171313] mb-5">
                 <Compass className="w-6 h-6" />
               </div>
-              <div className="font-display font-black text-xs uppercase tracking-widest text-[#E51919] mb-1">
+              <div className="font-display font-black text-xs uppercase tracking-widest text-[#D94B3D] mb-1">
                 01 / DISCOVER
               </div>
               <h3 className="font-display font-black text-2xl text-[#171313] mb-3">
@@ -135,15 +142,15 @@ export default function LandingPage() {
             </div>
             <div className="mt-6 pt-4 border-t-2 border-[#171313] flex items-center justify-between text-xs font-bold">
               <span>Curated Cities</span>
-              <span className="text-[#E51919]">Instant Plotted →</span>
+              <span className="text-[#D94B3D]">Instant Plotted →</span>
             </div>
           </NeoCard>
 
           {/* Card 2 */}
-          <NeoCard className="p-7 bg-[#FAECDC] border-[3px] border-[#171313] shadow-[5px_5px_0px_#E51919] flex flex-col justify-between">
+          <NeoCard className="p-7 bg-[#FAECDC] border-[3px] border-[#171313] shadow-[5px_5px_0px_#D94B3D] flex flex-col justify-between">
             <div>
               <div className="w-12 h-12 rounded-2xl bg-[#171313] text-[#FFF5E9] border-2 border-[#171313] flex items-center justify-center shadow-[3px_3px_0px_#171313] mb-5">
-                <Layers className="w-6 h-6 text-[#E51919]" />
+                <Layers className="w-6 h-6 text-[#D94B3D]" />
               </div>
               <div className="font-display font-black text-xs uppercase tracking-widest text-[#171313] mb-1">
                 02 / ARCHITECT
@@ -186,10 +193,10 @@ export default function LandingPage() {
       </section>
 
       {/* ─── 🌄 FEATURED REGIONAL CIRCUITS (Curated Destinations) ─── */}
-      <section className="px-4 sm:px-8 lg:px-12 py-12 max-w-7xl mx-auto w-full">
+      <section className="px-6 sm:px-10 lg:px-16 py-12 max-w-7xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
-            <span className="inline-block px-3 py-1 rounded-lg border-2 border-[#171313] bg-[#E51919] text-white font-display font-black text-[11px] uppercase tracking-wider shadow-[2px_2px_0px_#171313] mb-2">
+            <span className="inline-block px-3 py-1 rounded-lg border-2 border-[#171313] bg-[#D94B3D] text-white font-display font-black text-[11px] uppercase tracking-wider shadow-[2px_2px_0px_#171313] mb-2">
               Featured Stops
             </span>
             <h2 className="font-display font-black text-3xl sm:text-4xl text-[#171313] tracking-tight uppercase">
@@ -220,7 +227,7 @@ export default function LandingPage() {
                   unoptimized
                 />
                 <div className="absolute top-3 left-3">
-                  <span className="px-2.5 py-0.5 bg-[#E51919] text-white border-2 border-[#171313] rounded-md font-display font-extrabold text-[11px] uppercase shadow-[2px_2px_0px_#171313]">
+                  <span className="px-2.5 py-0.5 bg-[#D94B3D] text-white border-2 border-[#171313] rounded-md font-display font-extrabold text-[11px] uppercase shadow-[2px_2px_0px_#171313]">
                     {dest.region}
                   </span>
                 </div>
@@ -237,7 +244,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="mt-4 pt-3 border-t-2 border-[#171313] flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#E51919]">
+                  <span className="text-xs font-bold text-[#D94B3D]">
                     {dest.city}, {dest.country}
                   </span>
                   <Link href={`/explore?city=${encodeURIComponent(dest.city)}`}>
@@ -253,8 +260,8 @@ export default function LandingPage() {
       </section>
 
       {/* ─── 🚀 BOTTOM CTA EXPERIENCE BANNER ─── */}
-      <section className="px-4 sm:px-8 lg:px-12 py-16 max-w-7xl mx-auto w-full">
-        <div className="relative rounded-3xl border-[4px] border-[#171313] bg-[#E51919] p-8 sm:p-12 md:p-16 text-white shadow-[8px_8px_0px_#171313] overflow-hidden">
+      <section className="px-6 sm:px-10 lg:px-16 py-16 max-w-7xl mx-auto w-full">
+        <div className="relative rounded-3xl border-[4px] border-[#171313] bg-[#D94B3D] p-8 sm:p-12 md:p-16 text-white shadow-[8px_8px_0px_#171313] overflow-hidden">
           <div className="relative z-10 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#171313] text-[#FFF5E9] border-2 border-white rounded-lg font-display font-black text-xs uppercase mb-4 shadow-[2px_2px_0px_#FFFFFF]">
               <Sparkles className="w-4 h-4 fill-white" />
@@ -274,9 +281,9 @@ export default function LandingPage() {
                 variant="white"
                 size="lg"
                 rightIcon={<ArrowRight className="w-5 h-5 stroke-[2.5]" />}
-                className="py-4 px-8 text-base shadow-[5px_5px_0px_#171313]"
+                className="py-4 px-8 text-base font-black shadow-[5px_5px_0px_#171313]"
               >
-                Start Planning Free
+                START PLANNING FREE
               </NeoButton>
             </Link>
           </div>
@@ -284,7 +291,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── 🧭 CLEAN FOOTER ─── */}
-      <footer className="mt-auto bg-[#171313] text-[#FFF5E9] border-t-[4px] border-[#171313] py-12 px-4 sm:px-8 lg:px-12">
+      <footer className="mt-auto bg-[#171313] text-[#FFF5E9] border-t-[4px] border-[#171313] py-12 px-6 sm:px-10 lg:px-16">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="p-2 bg-[#FFFFFF] rounded-2xl border-2 border-[#171313] shadow-[3px_3px_0px_#FFFFFF]">

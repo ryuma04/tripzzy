@@ -1,12 +1,17 @@
 "use client";
 
 import React, { useRef } from "react";
+import Image from "next/image";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import {
-  Ticket,
-  Sparkles,
+  Globe,
   Plane,
-  Navigation,
+  Mountain,
+  Palmtree,
+  Play,
+  Castle,
+  MapPin,
+  Sparkles,
 } from "lucide-react";
 
 export const TravelMotionScene: React.FC = () => {
@@ -16,15 +21,15 @@ export const TravelMotionScene: React.FC = () => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
-  const springConfig = { damping: 25, stiffness: 100 };
+  const springConfig = { damping: 30, stiffness: 90 };
   const smoothMouseX = useSpring(mouseX, springConfig);
   const smoothMouseY = useSpring(mouseY, springConfig);
 
-  const bgX = useTransform(smoothMouseX, [-250, 250], [6, -6]);
-  const bgY = useTransform(smoothMouseY, [-250, 250], [6, -6]);
+  const bgX = useTransform(smoothMouseX, [-200, 200], [5, -5]);
+  const bgY = useTransform(smoothMouseY, [-200, 200], [5, -5]);
 
-  const fgX = useTransform(smoothMouseX, [-250, 250], [14, -14]);
-  const fgY = useTransform(smoothMouseY, [-250, 250], [14, -14]);
+  const fgX = useTransform(smoothMouseX, [-200, 200], [10, -10]);
+  const fgY = useTransform(smoothMouseY, [-200, 200], [10, -10]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
@@ -45,308 +50,417 @@ export const TravelMotionScene: React.FC = () => {
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="relative w-full max-w-2xl mx-auto py-8 px-2 sm:px-6 select-none"
+      className="relative w-full aspect-[4/3] sm:aspect-[16/12] lg:aspect-[16/12] max-w-2xl mx-auto select-none"
     >
       {/* ══════════════════════════════════════════════════════════════
-          MAIN CINEMATIC TRAVEL WORLD FRAME
+          LAYER 1: BACKGROUND DOTTED WORLD MAP & SUN DISK
           ══════════════════════════════════════════════════════════════ */}
-      <div className="relative w-full aspect-[4/3] sm:aspect-[16/11] rounded-3xl border-[4px] border-[#171313] bg-[#FFFDF9] shadow-[8px_8px_0px_#171313] overflow-hidden">
-        {/* ─── Background Sky, Distant Hills & Rising Sun ─── */}
-        <motion.div
-          style={{ x: bgX, y: bgY }}
-          className="absolute inset-0 pointer-events-none"
-        >
-          {/* Warm Sky Background */}
-          <div className="absolute inset-0 bg-gradient-to-b from-[#FFF5E9] via-[#FFFAF3] to-[#FCEEE0]" />
-
-          {/* Minimalist Horizon Sun */}
-          <div className="absolute top-8 right-16 w-32 h-32 rounded-full bg-[#FAECDC] border-[3px] border-[#171313] flex items-center justify-center">
-            <div className="w-18 h-18 rounded-full bg-[#FCA5A5]/25 border-2 border-dashed border-[#E51919]/40" />
-          </div>
-
-          {/* Drifting Clouds */}
-          <motion.div
-            animate={{ x: [-40, 560] }}
-            transition={{ duration: 35, repeat: Infinity, ease: "linear" }}
-            className="absolute top-10 left-[-40px] opacity-80"
-          >
-            <div className="px-3.5 py-1 bg-[#FFFFFF] border-2 border-[#171313] rounded-full shadow-[2px_2px_0px_#171313] flex items-center gap-1.5 text-[10px] font-black text-neutral-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#E51919]" />
-              <span>ALT 4,500 FT</span>
-            </div>
-          </motion.div>
-
-          <motion.div
-            animate={{ x: [-60, 560] }}
-            transition={{ duration: 45, repeat: Infinity, ease: "linear", delay: 15 }}
-            className="absolute top-22 left-[-60px] opacity-70"
-          >
-            <div className="w-16 h-6 bg-[#FFFFFF] border-2 border-[#171313] rounded-full shadow-[2px_2px_0px_#171313]" />
-          </motion.div>
-
-          {/* Distant Hills & Mountains */}
-          <svg
-            viewBox="0 0 600 420"
-            className="absolute inset-0 w-full h-full"
-            fill="none"
-            preserveAspectRatio="none"
-          >
-            {/* Back Mountain Peaks */}
-            <polygon
-              points="0,420 100,230 200,300 320,190 440,300 520,230 600,420"
-              fill="#F3ECE2"
-              stroke="#171313"
-              strokeWidth="3.5"
-              strokeLinejoin="round"
-            />
-            {/* Mountain Summit Marker */}
-            <line x1="320" y1="190" x2="320" y2="225" stroke="#E51919" strokeWidth="2.5" strokeDasharray="3 3" />
-            <circle cx="320" cy="186" r="4" fill="#E51919" stroke="#171313" strokeWidth="2" />
-
-            {/* Rolling Mid Hills */}
+      <motion.div
+        style={{ x: bgX, y: bgY }}
+        className="absolute inset-0 pointer-events-none"
+      >
+        {/* Dotted Halftone World Map Silhouette */}
+        <div className="absolute top-2 right-4 w-72 h-44 opacity-25">
+          <svg viewBox="0 0 300 160" fill="none" className="w-full h-full">
+            <pattern id="world-dots" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+              <circle cx="4" cy="4" r="1.5" fill="#CBBBAA" />
+            </pattern>
+            {/* Continents rough dot shapes */}
             <path
-              d="M -20 320 Q 160 240, 320 280 T 620 250 L 620 440 L -20 440 Z"
-              fill="#FAECDC"
-              stroke="#171313"
-              strokeWidth="3.5"
-              strokeLinejoin="round"
-            />
-
-            {/* Foreground Landscape */}
-            <path
-              d="M -20 365 Q 220 290, 620 345 L 620 440 L -20 440 Z"
-              fill="#F5E4D1"
-              stroke="#171313"
-              strokeWidth="3.5"
-              strokeLinejoin="round"
+              d="M 20 40 Q 60 20, 90 50 Q 80 90, 40 100 Z M 140 30 Q 220 20, 260 60 Q 240 110, 160 100 Z M 180 110 Q 220 100, 240 140 Q 200 150, 170 130 Z"
+              fill="url(#world-dots)"
             />
           </svg>
+        </div>
+
+        {/* Large Warm Sand Sun Disk on Horizon */}
+        <div className="absolute top-28 right-24 sm:right-32 w-44 h-44 sm:w-52 sm:h-52 rounded-full bg-[#FAECDC]/90 border-[2.5px] border-[#171313]/20 flex items-center justify-center pointer-events-none">
+          {/* Subtle Bird Silhouettes */}
+          <div className="absolute top-12 left-10 text-neutral-600 text-xs font-serif font-black tracking-widest opacity-60">
+            ~ ~
+          </div>
+          <div className="absolute top-16 right-12 text-neutral-600 text-[10px] font-serif font-black tracking-widest opacity-50">
+            ~
+          </div>
+        </div>
+
+        {/* 🏔️ GEOMETRIC ALPINE MOUNTAIN PEAKS WITH SNOW CAPS & PINE TREES */}
+        <svg
+          viewBox="0 0 640 480"
+          className="absolute inset-0 w-full h-full"
+          fill="none"
+          preserveAspectRatio="none"
+        >
+          {/* Background Sandy Dunes / Distant Hills */}
+          <path
+            d="M 220 330 Q 380 270, 640 290 L 640 480 L 220 480 Z"
+            fill="#F6ECE0"
+          />
+
+          {/* Back Mountain Peaks (Dark & Sand) */}
+          <polygon
+            points="280,320 350,210 420,320"
+            fill="#171313"
+            stroke="#171313"
+            strokeWidth="3"
+            strokeLinejoin="round"
+          />
+          <polygon
+            points="350,210 325,250 350,240 375,250"
+            fill="#FFFFFF"
+          />
+
+          {/* Main Dramatic Snow Peak */}
+          <polygon
+            points="380,310 460,180 540,310"
+            fill="#EFE5D8"
+            stroke="#171313"
+            strokeWidth="3"
+            strokeLinejoin="round"
+          />
+          {/* Dark Shadow Side of Mountain */}
+          <polygon
+            points="460,180 460,310 540,310"
+            fill="#231E1E"
+            stroke="#171313"
+            strokeWidth="3"
+          />
+          {/* White Snow Cap */}
+          <polygon
+            points="460,180 435,225 460,215 485,225"
+            fill="#FFFFFF"
+          />
+
+          {/* Right Alpine Ridge */}
+          <polygon
+            points="490,300 570,215 640,290"
+            fill="#E8DC CD"
+            stroke="#171313"
+            strokeWidth="3"
+            strokeLinejoin="round"
+          />
+          <polygon
+            points="570,215 570,290 640,290"
+            fill="#2A2424"
+            stroke="#171313"
+            strokeWidth="3"
+          />
+
+          {/* Pine Trees Silhouettes along the Ridge */}
+          <polygon points="290,305 295,285 300,305" fill="#171313" />
+          <polygon points="302,310 307,288 312,310" fill="#171313" />
+          <polygon points="314,312 319,292 324,312" fill="#171313" />
+          <polygon points="330,315 335,295 340,315" fill="#171313" />
+          <polygon points="345,318 350,300 355,318" fill="#171313" />
+
+          {/* Red Mountain Pin Pole Marker (MANALI) */}
+          <line x1="595" y1="230" x2="595" y2="280" stroke="#171313" strokeWidth="2.5" />
+          <circle cx="595" cy="280" r="3.5" fill="#D94B3D" stroke="#171313" strokeWidth="1.5" />
+
+          {/* Red Fort Pin Pole Marker (JAIPUR) */}
+          <line x1="310" y1="260" x2="310" y2="295" stroke="#171313" strokeWidth="2.5" />
+          <circle cx="310" cy="295" r="3.5" fill="#D94B3D" stroke="#171313" strokeWidth="1.5" />
+        </svg>
+      </motion.div>
+
+      {/* ══════════════════════════════════════════════════════════════
+          LAYER 2: THE WINDING HIGHWAY ROAD & DRIVING RED BUS
+          ══════════════════════════════════════════════════════════════ */}
+      <div className="absolute inset-0 pointer-events-none">
+        <svg
+          viewBox="0 0 640 480"
+          className="w-full h-full"
+          fill="none"
+          preserveAspectRatio="none"
+        >
+          {/* 🛣️ THE MAJESTIC S-CURVE HIGHWAY ROAD */}
+          {/* Black Outer Bed Base */}
+          <path
+            d="M 320 490 C 390 440, 480 390, 460 320 C 440 260, 560 270, 640 270"
+            stroke="#171313"
+            strokeWidth="90"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Inner Asphalt Bed */}
+          <path
+            d="M 320 490 C 390 440, 480 390, 460 320 C 440 260, 560 270, 640 270"
+            stroke="#1E1919"
+            strokeWidth="78"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Dual Red Outer Edge Stripes */}
+          <path
+            d="M 302 490 C 372 440, 462 390, 442 320 C 422 260, 542 270, 640 270"
+            stroke="#D94B3D"
+            strokeWidth="4"
+            fill="none"
+          />
+          <path
+            d="M 338 490 C 408 440, 498 390, 478 320 C 458 260, 578 270, 640 270"
+            stroke="#D94B3D"
+            strokeWidth="4"
+            fill="none"
+          />
+          {/* White Center Dashed Line */}
+          <path
+            d="M 320 490 C 390 440, 480 390, 460 320 C 440 260, 560 270, 640 270"
+            stroke="#FFFFFF"
+            strokeWidth="4"
+            strokeDasharray="18 12"
+            className="animate-[dash_1.5s_linear_infinite]"
+            fill="none"
+          />
+
+          {/* 🔴 RED DASHED TRAIL ACROSS MOUNTAINS */}
+          <path
+            d="M 310 295 Q 400 240, 430 250 T 485 270 T 560 230"
+            stroke="#D94B3D"
+            strokeWidth="2.5"
+            strokeDasharray="6 6"
+            fill="none"
+          />
+          {/* Pin 1 on trail */}
+          <circle cx="450" cy="240" r="5" fill="#D94B3D" stroke="#171313" strokeWidth="2" />
+          {/* Pin 2 on trail */}
+          <circle cx="485" cy="270" r="4" fill="#D94B3D" stroke="#171313" strokeWidth="1.5" />
+
+          {/* ✈️ RED DASHED FLIGHT PATH IN SKY */}
+          <path
+            d="M 430 250 C 420 150, 480 80, 580 110 C 620 120, 640 130, 650 140"
+            stroke="#D94B3D"
+            strokeWidth="2.5"
+            strokeDasharray="6 6"
+            fill="none"
+          />
+        </svg>
+
+        {/* ✈️ THE AIRPLANE GLIDING ALONG THE CURVED FLIGHT PATH */}
+        <motion.div
+          animate={{
+            x: [390, 450, 510],
+            y: [170, 130, 115],
+            rotate: [-20, -10, 5],
+          }}
+          transition={{
+            duration: 12,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute top-0 left-0 z-20 pointer-events-auto"
+        >
+          {/* Sleek Passenger Jet Illustration */}
+          <div className="relative -translate-x-1/2 -translate-y-1/2 hover:scale-110 transition-transform cursor-pointer">
+            <svg width="84" height="42" viewBox="0 0 120 60" fill="none">
+              {/* Airplane Body */}
+              <path
+                d="M 10 32 L 60 28 L 85 26 C 105 26, 115 28, 118 30 C 115 32, 105 34, 85 34 L 60 32 L 10 32 Z"
+                fill="#FFFFFF"
+                stroke="#171313"
+                strokeWidth="2.5"
+              />
+              {/* Red Tail Fin */}
+              <path
+                d="M 12 32 L 2 10 L 16 10 L 26 32 Z"
+                fill="#D94B3D"
+                stroke="#171313"
+                strokeWidth="2.5"
+              />
+              {/* Main Wing (Left / Foreground) */}
+              <polygon
+                points="50,30 35,54 48,54 75,30"
+                fill="#FFFFFF"
+                stroke="#171313"
+                strokeWidth="2"
+              />
+              {/* Top Wing (Right / Background) */}
+              <polygon
+                points="56,28 65,8 74,8 78,28"
+                fill="#E0D8D0"
+                stroke="#171313"
+                strokeWidth="2"
+              />
+              {/* Cockpit Windows & Cabin Windows */}
+              <path d="M 104 28 L 112 29 L 106 30 Z" fill="#171313" />
+              <circle cx="95" cy="29" r="1" fill="#D94B3D" />
+              <circle cx="90" cy="29" r="1" fill="#171313" />
+              <circle cx="85" cy="29" r="1" fill="#171313" />
+              <circle cx="80" cy="29" r="1" fill="#171313" />
+            </svg>
+          </div>
         </motion.div>
 
-        {/* ─── The Perspective Road & Driving Car ─── */}
-        <div className="absolute inset-0 pointer-events-none">
-          <svg
-            viewBox="0 0 600 420"
-            className="w-full h-full"
-            fill="none"
-            preserveAspectRatio="none"
-          >
-            {/* 🛣️ PERSPECTIVE HIGHWAY ROAD */}
-            {/* Black Road Bed */}
-            <path
-              d="M 60 440 C 130 350, 200 290, 310 260 C 400 235, 480 205, 525 135"
-              stroke="#171313"
-              strokeWidth="76"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Dark Asphalt Surface */}
-            <path
-              d="M 60 440 C 130 350, 200 290, 310 260 C 400 235, 480 205, 525 135"
-              stroke="#201C1C"
-              strokeWidth="66"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Left Red Shoulder */}
-            <path
-              d="M 44 440 C 114 350, 184 290, 294 260 C 384 235, 464 205, 509 135"
-              stroke="#E51919"
-              strokeWidth="4"
-              fill="none"
-            />
-            {/* Right Red Shoulder */}
-            <path
-              d="M 76 440 C 146 350, 216 290, 326 260 C 416 235, 496 205, 541 135"
-              stroke="#E51919"
-              strokeWidth="4"
-              fill="none"
-            />
-            {/* Animated Dashed Center Markings */}
-            <path
-              d="M 60 440 C 130 350, 200 290, 310 260 C 400 235, 480 205, 525 135"
-              stroke="#FFF5E9"
-              strokeWidth="4"
-              strokeDasharray="16 12"
-              className="animate-[dash_1.5s_linear_infinite]"
-              fill="none"
-            />
-          </svg>
+        {/* 🚗 🚌 THE VINTAGE RED CAMPERVAN BUS DRIVING SMOOTHLY ON THE ROAD */}
+        <motion.div
+          animate={{
+            x: [350, 420, 460, 520],
+            y: [400, 345, 305, 270],
+            scale: [1.2, 1.0, 0.85, 0.7],
+            rotate: [-28, -20, 0, 12],
+          }}
+          transition={{
+            duration: 10,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute top-0 left-0 z-20 pointer-events-auto cursor-pointer"
+        >
+          {/* Ground Tire Shadow */}
+          <div className="absolute -bottom-2 left-2 w-16 h-4 bg-[#171313]/60 rounded-full blur-[2px]" />
 
-          {/* ✈️ AIRPLANE CURVED FLIGHT TRAJECTORY */}
-          <svg
-            viewBox="0 0 600 420"
-            className="absolute inset-0 w-full h-full pointer-events-none"
-          >
-            <path
-              d="M 30 110 Q 280 20, 540 85"
-              stroke="#E51919"
-              strokeWidth="3"
-              strokeDasharray="7 7"
-              fill="none"
-              opacity="0.85"
-            />
-          </svg>
+          {/* Detailed Two-Tone Red & Cream Campervan Bus with Luggage on Roof */}
+          <div className="relative hover:scale-110 transition-transform">
+            <svg width="68" height="54" viewBox="0 0 90 72" fill="none">
+              {/* Roof Luggage Rack with Suitcases */}
+              <rect x="25" y="10" width="40" height="8" rx="2" fill="#D94B3D" stroke="#171313" strokeWidth="2.5" />
+              <rect x="30" y="5" width="18" height="7" rx="1.5" fill="#FAECDC" stroke="#171313" strokeWidth="2" />
+              <rect x="50" y="6" width="12" height="6" rx="1.5" fill="#171313" />
 
-          {/* ✈️ LARGER & BOLDER FLYING AIRPLANE */}
-          <motion.div
-            animate={{
-              x: [25, 275, 510],
-              y: [110, 25, 85],
-              rotate: [-12, 3, 16],
-            }}
-            transition={{
-              duration: 14,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-            className="absolute top-0 left-0 z-20 pointer-events-auto"
-          >
-            <div className="flex items-center gap-2 p-2 px-3.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] -translate-x-1/2 -translate-y-1/2">
-              <Plane className="w-6 h-6 text-[#E51919] fill-[#E51919] stroke-[2.5]" />
-              <div className="flex flex-col">
-                <span className="font-display font-black text-xs text-[#171313] tracking-wider leading-none">
-                  AI-804
-                </span>
-                <span className="text-[9px] font-bold text-[#E51919] leading-none mt-0.5">
-                  AIR ROUTE
-                </span>
-              </div>
-            </div>
-          </motion.div>
+              {/* White Upper Cabin / Roof */}
+              <path
+                d="M 18 20 C 22 16, 32 15, 72 15 C 76 15, 78 20, 78 35 L 12 35 C 12 25, 14 20, 18 20 Z"
+                fill="#FFFFFF"
+                stroke="#171313"
+                strokeWidth="3"
+              />
+              {/* Rear Windshield Windows */}
+              <rect x="18" y="22" width="16" height="11" rx="2" fill="#2A2424" stroke="#171313" strokeWidth="2" />
+              <rect x="38" y="22" width="16" height="11" rx="2" fill="#2A2424" stroke="#171313" strokeWidth="2" />
+              <rect x="58" y="22" width="16" height="11" rx="2" fill="#2A2424" stroke="#171313" strokeWidth="2" />
 
-          {/* 🚗 🚌 LARGER & PROPERLY POSITIONED RED CAMPERVAN (DRIVING DIRECTLY ON THE ROAD) */}
-          <motion.div
-            animate={{
-              x: [75, 175, 290, 405, 490],
-              y: [360, 305, 255, 220, 165],
-              scale: [1.25, 1.1, 0.95, 0.8, 0.65],
-              rotate: [-32, -26, -18, -22, -32],
-            }}
-            transition={{
-              duration: 10,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-            className="absolute top-0 left-0 z-20 pointer-events-auto cursor-pointer"
-          >
-            {/* Ground Contact Tire Shadow Directly on Asphalt */}
-            <div className="absolute -bottom-2 left-2 w-18 h-4 bg-[#171313]/70 rounded-full blur-[2px]" />
+              {/* Red Lower Body */}
+              <path
+                d="M 12 35 L 78 35 L 80 56 C 80 58, 76 60, 72 60 L 18 60 C 14 60, 10 58, 10 56 Z"
+                fill="#D94B3D"
+                stroke="#171313"
+                strokeWidth="3"
+              />
+              {/* Chrome Rear Bumper & License / Badge */}
+              <rect x="36" y="44" width="18" height="8" rx="1.5" fill="#FAECDC" stroke="#171313" strokeWidth="2" />
+              <rect x="14" y="54" width="62" height="4" rx="2" fill="#E8DCD0" stroke="#171313" strokeWidth="2" />
 
-            {/* Red Campervan Vehicle Vector (Substantial & Bold) */}
-            <div className="relative p-1.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] hover:scale-110 transition-transform">
-              <svg width="60" height="40" viewBox="0 0 76 56" fill="none">
-                {/* Roof Navigation Wheel / Compass */}
-                <circle cx="50" cy="18" r="9" stroke="#E51919" strokeWidth="3" fill="#FFF5E9" />
-                <circle cx="50" cy="18" r="3" fill="#E51919" />
-                <line x1="50" y1="6" x2="50" y2="30" stroke="#E51919" strokeWidth="2.5" strokeLinecap="round" />
-                <line x1="38" y1="18" x2="62" y2="18" stroke="#E51919" strokeWidth="2.5" strokeLinecap="round" />
+              {/* Wheels with White Walls and Red Hubcaps */}
+              <circle cx="24" cy="60" r="9" fill="#171313" />
+              <circle cx="24" cy="60" r="6" fill="#FFFFFF" />
+              <circle cx="24" cy="60" r="3" fill="#D94B3D" />
 
-                {/* Solid Red Bus Body */}
-                <path
-                  d="M20 20 C24 16, 32 16, 56 16 L58 24 L60 48 L14 48 C14 48, 12 40, 14 34 L18 24 Z"
-                  fill="#E51919"
-                  stroke="#171313"
-                  strokeWidth="3.5"
-                  strokeLinejoin="round"
-                />
-                {/* Windshield */}
-                <path d="M18 25 L15 34 L28 34 L28 25 Z" fill="#FFFFFF" stroke="#171313" strokeWidth="2.5" />
-                {/* Side Window */}
-                <rect x="36" y="25" width="14" height="10" rx="2" fill="#FFFFFF" stroke="#171313" strokeWidth="2.5" />
-                {/* Wheels with Red Hubs */}
-                <circle cx="23" cy="48" r="7.5" fill="#FFFFFF" stroke="#171313" strokeWidth="3.5" />
-                <circle cx="23" cy="48" r="3" fill="#E51919" />
-                <circle cx="50" cy="48" r="7.5" fill="#FFFFFF" stroke="#171313" strokeWidth="3.5" />
-                <circle cx="50" cy="48" r="3" fill="#E51919" />
-              </svg>
-            </div>
-          </motion.div>
-        </div>
+              <circle cx="66" cy="60" r="9" fill="#171313" />
+              <circle cx="66" cy="60" r="6" fill="#FFFFFF" />
+              <circle cx="66" cy="60" r="3" fill="#D94B3D" />
+            </svg>
+          </div>
+        </motion.div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          OUTER PERIPHERAL FLOATING CARDS (PLACED AT THE EDGES FROM OUTSIDE)
+          LAYER 3: THE FLOATING TRAVEL CARDS & BADGES (MATCHING REFERENCE)
           ══════════════════════════════════════════════════════════════ */}
-      <motion.div style={{ x: fgX, y: fgY }} className="pointer-events-none">
-        {/* 🎫 TOP LEFT OUTER EDGE: EXP-PASS BOARDING PASS */}
+      <motion.div style={{ x: fgX, y: fgY }} className="absolute inset-0 pointer-events-none">
+        {/* 🎫 1. TOP-RIGHT: EXP-PASS #089 TICKET */}
         <motion.div
-          animate={{ y: [0, -6, 0], rotate: [-2, 1, -2] }}
+          animate={{ y: [0, -5, 0], rotate: [6, 4, 6] }}
           transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -top-3 -left-2 sm:-top-4 sm:-left-4 z-30 pointer-events-auto"
+          className="absolute top-0 sm:top-2 right-2 sm:right-6 z-30 pointer-events-auto"
         >
-          <div className="p-3 sm:p-3.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[5px_5px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
+          <div className="p-3 sm:p-3.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
             <div className="flex items-center gap-2 mb-1.5">
-              <div className="p-1 bg-[#E51919] text-white rounded-lg border border-[#171313]">
-                <Ticket className="w-4 h-4" />
-              </div>
+              <Globe className="w-4 h-4 text-[#D94B3D]" />
               <span className="font-display font-black text-xs uppercase tracking-widest text-[#171313]">
                 EXP-PASS #089
               </span>
             </div>
-            <div className="text-[10px] font-extrabold text-neutral-700 border-t-2 border-neutral-100 pt-1.5 flex items-center justify-between gap-4">
+            <div className="text-[11px] font-extrabold text-neutral-800 border-t-2 border-neutral-100 pt-1.5 flex items-center justify-between gap-4">
               <span>BOM ➔ GOI</span>
-              <span className="px-1.5 py-0.5 rounded bg-[#15803D]/15 text-[#15803D] border border-[#15803D]/30 font-black">
+              <span className="px-2 py-0.5 rounded-md bg-[#D94B3D] text-white font-black text-[10px]">
                 CONFIRMED ✓
               </span>
             </div>
           </div>
         </motion.div>
 
-        {/* 📍 TOP RIGHT OUTER EDGE: MANALI SUMMIT BADGE */}
+        {/* ✈️ 2. TOP-LEFT OF AIRPLANE: AI-802 TICKET TAG */}
         <motion.div
-          animate={{ y: [0, -7, 0] }}
-          transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
-          className="absolute -top-3 -right-2 sm:-top-4 sm:-right-4 z-30 pointer-events-auto"
+          animate={{ y: [0, -6, 0], rotate: [-10, -7, -10] }}
+          transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+          className="absolute top-16 sm:top-20 left-10 sm:left-14 z-30 pointer-events-auto"
         >
-          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-[#E51919] text-white border-[3px] border-[#171313] rounded-2xl shadow-[5px_5px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
-            <Sparkles className="w-4 h-4 fill-white" />
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
+            <Plane className="w-4 h-4 text-[#D94B3D] fill-[#D94B3D]" />
+            <span className="font-display font-black text-xs text-[#171313] tracking-wider">
+              AI-802
+            </span>
+          </div>
+        </motion.div>
+
+        {/* 🏰 3. MID-LEFT: JAIPUR FORT PIN CARD */}
+        <motion.div
+          animate={{ y: [0, -5, 0] }}
+          transition={{ duration: 4.4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+          className="absolute top-44 sm:top-48 left-2 sm:left-4 z-30 pointer-events-auto"
+        >
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
+            <Castle className="w-4 h-4 text-[#D94B3D]" />
+            <span className="font-display font-black text-xs uppercase text-[#171313] tracking-wide">
+              JAIPUR FORT
+            </span>
+          </div>
+        </motion.div>
+
+        {/* 🏔️ 4. MID-RIGHT: MANALI SUMMIT PIN CARD */}
+        <motion.div
+          animate={{ y: [0, -6, 0], rotate: [4, 2, 4] }}
+          transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut", delay: 1.4 }}
+          className="absolute top-36 sm:top-40 right-2 sm:right-6 z-30 pointer-events-auto"
+        >
+          <div className="flex items-center gap-2.5 px-3.5 py-2 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-xl shadow-[4px_4px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
+            <Mountain className="w-4 h-4 text-[#D94B3D]" />
             <div className="flex flex-col text-left">
-              <span className="font-display font-black text-xs uppercase tracking-wider leading-none">
+              <span className="font-display font-black text-[11px] uppercase tracking-wider text-[#171313] leading-none">
                 MANALI SUMMIT
               </span>
-              <span className="text-[9px] font-bold text-white/90 mt-0.5">
+              <span className="text-[9px] font-bold text-neutral-500 mt-0.5">
                 2,050m Altitude
               </span>
             </div>
           </div>
         </motion.div>
 
-        {/* 📍 BOTTOM LEFT OUTER EDGE: GOA COAST (START PIN) */}
+        {/* 🌴 5. LOWER-LEFT: GOA COAST BEACH TICKET */}
         <motion.div
-          animate={{ y: [0, -6, 0] }}
-          transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
-          className="absolute -bottom-3 -left-2 sm:-bottom-4 sm:-left-4 z-30 pointer-events-auto"
+          animate={{ y: [0, -6, 0], rotate: [-8, -5, -8] }}
+          transition={{ duration: 4.6, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+          className="absolute bottom-20 sm:bottom-24 left-10 sm:left-14 z-30 pointer-events-auto"
         >
-          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[5px_5px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#15803D] animate-ping" />
-            <div className="flex flex-col">
+          <div className="flex items-center gap-2.5 px-3.5 py-2 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-xl shadow-[4px_4px_0px_#171313] hover:-translate-y-1 transition-transform cursor-pointer">
+            <Palmtree className="w-5 h-5 text-[#D94B3D]" />
+            <div className="flex flex-col text-left">
               <span className="font-display font-black text-xs uppercase tracking-wider text-[#171313] leading-none">
-                📍 GOA COAST
+                GOA COAST
               </span>
-              <span className="text-[10px] font-bold text-[#E51919] mt-0.5">
-                Day 01 • Departure
+              <span className="text-[10px] font-bold text-[#D94B3D] mt-0.5">
+                Day 01 - Start
               </span>
             </div>
           </div>
         </motion.div>
 
-        {/* 🧭 BOTTOM RIGHT OUTER EDGE: MULTI-STOP ROUTE COMPASS BADGE */}
+        {/* ▶️ 6. BOTTOM-RIGHT: MULTI-STOP ROUTE CARD */}
         <motion.div
-          animate={{ y: [0, -6, 0], rotate: [-3, 0, -3] }}
-          transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-          className="absolute -bottom-3 -right-2 sm:-bottom-4 sm:-right-4 z-30 pointer-events-auto"
+          animate={{ y: [0, -5, 0], rotate: [6, 4, 6] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1.8 }}
+          className="absolute bottom-10 sm:bottom-14 right-2 sm:right-6 z-30 pointer-events-auto"
         >
-          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[5px_5px_0px_#171313] hover:scale-105 transition-transform cursor-pointer">
-            <div className="w-8 h-8 rounded-xl bg-[#E51919] text-white flex items-center justify-center border border-[#171313]">
-              <Navigation className="w-4 h-4 rotate-45 fill-white" />
+          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-xl shadow-[4px_4px_0px_#171313] hover:scale-105 transition-transform cursor-pointer">
+            <div className="w-7 h-7 rounded-lg bg-[#D94B3D] text-white flex items-center justify-center border border-[#171313]">
+              <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
             </div>
             <div>
               <div className="font-display font-black text-xs uppercase text-[#171313] leading-none">
                 MULTI-STOP
               </div>
-              <div className="text-[10px] font-bold text-[#E51919] mt-0.5">
-                Sequential Route
+              <div className="text-[10px] font-bold text-[#D94B3D] mt-0.5">
+                Interactive Route
               </div>
             </div>
           </div>

@@ -7,6 +7,10 @@ from fastapi import APIRouter
 from app.core import responses
 from app.core.deps import CurrentUser, DbSession
 from app.schemas.common import ReorderRequest
+from app.schemas.logistics import (
+    AccommodationCreateRequest,
+    AccommodationResponse,
+)
 from app.schemas.stop import (
     ItineraryActivityCreateRequest,
     ItineraryActivityResponse,
@@ -15,6 +19,7 @@ from app.schemas.stop import (
     StopUpdateRequest,
 )
 from app.services.itinerary_service import ItineraryService
+from app.services.logistics_service import LogisticsService
 
 router = APIRouter(prefix="/stops", tags=["stops"])
 
@@ -86,6 +91,35 @@ async def add_activity(
         "Activity added successfully",
         status_code=201,
         warnings=warnings,
+    )
+
+
+@router.get("/{stop_id}/accommodations", summary="Accommodation at a stop")
+async def list_accommodations(
+    stop_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    rows = await LogisticsService(db).list_accommodations(stop_id, current_user)
+    return responses.success(
+        {"items": [AccommodationResponse(**a).model_dump() for a in rows]}, "OK"
+    )
+
+
+@router.post(
+    "/{stop_id}/accommodations", summary="Add accommodation", status_code=201
+)
+async def add_accommodation(
+    stop_id: uuid.UUID,
+    payload: AccommodationCreateRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    row = await LogisticsService(db).add_accommodation(
+        stop_id, payload, current_user
+    )
+    return responses.success(
+        AccommodationResponse(**row).model_dump(),
+        "Accommodation added successfully",
+        status_code=201,
     )
 
 

@@ -5,6 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core import responses
@@ -131,16 +132,27 @@ def _register_routers(app: FastAPI) -> None:
     from app.routers import (  # noqa: PLC0415
         activities,
         auth,
+        calendar,
         destinations,
         itinerary,
+        logistics,
         stops,
         trips,
         users,
     )
 
     prefix = settings.API_V1_PREFIX
-    for module in (auth, users, trips, stops, itinerary, destinations, activities):
+    for module in (
+        auth, users, trips, stops, itinerary, destinations, activities, calendar,
+    ):
         app.include_router(module.router, prefix=prefix)
+
+    for item_router in (
+        logistics.transport_router,
+        logistics.accommodation_router,
+        logistics.expense_router,
+    ):
+        app.include_router(item_router, prefix=prefix)
 
 
 app = create_app()

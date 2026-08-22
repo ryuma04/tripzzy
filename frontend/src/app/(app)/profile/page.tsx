@@ -24,20 +24,23 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { mockCurrentUser, mockTrips } from "@/data/mock";
+import { mockTrips } from "@/data/mock";
+import { useAuthUser } from "@/lib/auth";
 
 export default function ProfilePage() {
   const { showToast } = useToast();
+  const { user, updateUser, isAdmin, setRole } = useAuthUser();
   const [isEditing, setIsEditing] = useState(false);
 
   const [formData, setFormData] = useState({
-    first_name: mockCurrentUser.first_name,
-    last_name: mockCurrentUser.last_name,
-    email: mockCurrentUser.email,
-    phone: mockCurrentUser.phone,
-    city: mockCurrentUser.city,
-    country: mockCurrentUser.country,
-    additional_info: mockCurrentUser.additional_info || "",
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+    phone: user.phone,
+    city: user.city,
+    country: user.country,
+    additional_info: user.additional_info || "",
+    role: user.role,
   });
 
   const preplannedTrips = mockTrips.filter(
@@ -47,6 +50,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    updateUser(formData);
     setIsEditing(false);
     showToast("Profile details updated successfully!", "success");
   };
@@ -68,7 +72,7 @@ export default function ProfilePage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
             <div className="relative">
               <Avatar
-                src={mockCurrentUser.avatar_url}
+                src={user.avatar_url}
                 name={`${formData.first_name} ${formData.last_name}`}
                 size="xl"
               />
@@ -85,7 +89,9 @@ export default function ProfilePage() {
                 <h2 className="font-display font-extrabold text-2xl text-[#171313]">
                   {formData.first_name} {formData.last_name}
                 </h2>
-                <Badge variant="red">{mockCurrentUser.role}</Badge>
+                <Badge variant={isAdmin ? "red" : "cream"}>
+                  {isAdmin ? "🛡️ Admin" : "🎒 Explorer"}
+                </Badge>
               </div>
 
               <p className="text-xs font-semibold text-neutral-600 max-w-md">

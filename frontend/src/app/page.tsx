@@ -27,9 +27,9 @@ export default function LandingPage() {
       <section className="relative px-6 sm:px-10 lg:px-16 pt-8 sm:pt-12 pb-10 sm:pb-14 max-w-7xl mx-auto w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-2 items-center">
           {/* LEFT COLUMN: Exact Reference Typography & Action Composition */}
-          <div className="lg:col-span-5 flex flex-col items-start z-10">
+          <div className="lg:col-span-5 flex flex-col items-start text-left pl-0 z-10">
             {/* Main Headline */}
-            <h1 className="font-display font-black text-5xl sm:text-7xl lg:text-[70px] xl:text-[80px] text-[#171313] tracking-[-0.04em] leading-[0.93] uppercase mb-6">
+            <h1 className="font-display font-black text-5xl sm:text-7xl lg:text-[70px] xl:text-[80px] text-[#171313] tracking-[-0.04em] leading-[0.93] uppercase mb-6 text-left">
               YOUR NEXT <br />
               <span className="text-[#D94B3D]">ADVENTURE</span> <br />
               STARTS HERE<span className="text-[#D94B3D]">.</span>

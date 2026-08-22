@@ -3,12 +3,35 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import ItineraryActivity, Trip, TripStop
 from app.models.enums import TripStatus
+
+
+def status_expression():
+    """Compute a trip's status in SQL (spec section 10, refinement R3).
+
+    The stored ``trips.status`` column is only a cache, refreshed when a trip
+    is read. Filtering on it directly is wrong: a trip whose dates have since
+    passed, or which just gained its first stop, still carries a stale value
+    until something reads it. Deriving the status in the query instead means
+    ``?status=upcoming`` is always correct without a write.
+    """
+    stop_count = (
+        select(func.count(TripStop.id))
+        .where(TripStop.trip_id == Trip.id)
+        .correlate(Trip)
+        .scalar_subquery()
+    )
+    return case(
+        (stop_count == 0, literal(TripStatus.DRAFT.value)),
+        (func.current_date() < Trip.start_date, literal(TripStatus.UPCOMING.value)),
+        (func.current_date() > Trip.end_date, literal(TripStatus.COMPLETED.value)),
+        else_=literal(TripStatus.ONGOING.value),
+    )
 
 # Allowlist -- a client-supplied string is never interpolated into ORDER BY.
 SORTABLE = {
@@ -74,8 +97,10 @@ class TripRepository:
         )
 
         if status is not None:
-            stmt = stmt.where(Trip.status == status)
-            count_stmt = count_stmt.where(Trip.status == status)
+            # Derived in SQL, never read from the cached column.
+            condition = status_expression() == status.value
+            stmt = stmt.where(condition)
+            count_stmt = count_stmt.where(condition)
 
         if q:
             pattern = f"%{q.strip().lower()}%"

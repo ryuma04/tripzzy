@@ -5,6 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core import responses
@@ -81,6 +82,26 @@ def _register_exception_handlers(app: FastAPI) -> None:
             details={"fields": fields},
         )
 
+    @app.exception_handler(PydanticValidationError)
+    async def _pydantic_error(_: Request, exc: PydanticValidationError):
+        """Catch validation raised inside a ``Depends()`` model.
+
+        FastAPI only wraps body/query parsing into RequestValidationError.
+        A model used as a dependency -- the search-filter models, for
+        instance -- raises the raw pydantic error instead, which would
+        otherwise surface as a 500 rather than a 422.
+        """
+        fields: dict[str, str] = {}
+        for err in exc.errors():
+            loc = [str(p) for p in err["loc"] if p not in ("body", "query", "path")]
+            fields[".".join(loc) or "body"] = err["msg"]
+        return responses.error(
+            "Validation failed",
+            code=ErrorCode.VALIDATION_ERROR,
+            status_code=422,
+            details={"fields": fields},
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException):
         code = {
@@ -108,12 +129,36 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     """Mount routers as each phase lands."""
-    from app.routers import auth, trips, users  # noqa: PLC0415
+    from app.routers import (  # noqa: PLC0415
+        activities,
+        admin,
+        auth,
+        calendar,
+        community,
+        destinations,
+        itinerary,
+        logistics,
+        stops,
+        trips,
+        users,
+    )
 
     prefix = settings.API_V1_PREFIX
-    app.include_router(auth.router, prefix=prefix)
-    app.include_router(users.router, prefix=prefix)
-    app.include_router(trips.router, prefix=prefix)
+    for module in (
+        auth, users, trips, stops, itinerary, destinations, activities,
+        calendar, admin,
+    ):
+        app.include_router(module.router, prefix=prefix)
+
+    for extra in (community.community_router, community.public_router):
+        app.include_router(extra, prefix=prefix)
+
+    for item_router in (
+        logistics.transport_router,
+        logistics.accommodation_router,
+        logistics.expense_router,
+    ):
+        app.include_router(item_router, prefix=prefix)
 
 
 app = create_app()

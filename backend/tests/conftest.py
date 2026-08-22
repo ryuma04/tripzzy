@@ -27,6 +27,8 @@ os.environ["SMTP_USERNAME"] = ""
 os.environ["SMTP_PASSWORD"] = ""
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "false"
+# Minimum bcrypt cost: hashing otherwise dominates the run time.
+os.environ["BCRYPT_ROUNDS"] = "4"
 os.environ.setdefault(
     "SECRET_KEY", "test-secret-key-that-is-definitely-long-enough-1234567890"
 )
@@ -60,7 +62,7 @@ TestSessionLocal = async_sessionmaker(
 )
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _schema():
     """Build the schema once per session, tear it down at the end."""
     assert "tripzyy_test" in settings.database_url_str, (
@@ -94,23 +96,35 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def _override_get_db():
+    async with TestSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+
+
+def _build_client(headers: dict[str, str] | None = None) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test/api/v1",
+        headers=headers or {},
+    )
+
+
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    """An HTTP client bound to the ASGI app, sharing the test database."""
+    """An **anonymous** client bound to the ASGI app.
 
-    async def _get_db():
-        async with TestSessionLocal() as session:
-            try:
-                yield session
-            except Exception:
-                await session.rollback()
-                raise
-
-    app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test/api/v1"
-    ) as ac:
+    This must stay genuinely unauthenticated: ``auth_client`` deliberately
+    builds its own instance rather than adding a header to this one, so that
+    a test taking both fixtures really is comparing signed-in against
+    signed-out. (An earlier version mutated this client's headers, which made
+    every "no authentication required" assertion pass vacuously.)
+    """
+    app.dependency_overrides[get_db] = _override_get_db
+    async with _build_client() as ac:
         yield ac
     app.dependency_overrides.clear()
 
@@ -148,10 +162,15 @@ async def user_token(client: AsyncClient) -> tuple[str, dict]:
 @pytest_asyncio.fixture
 async def auth_client(
     client: AsyncClient, user_token: tuple[str, dict]
-) -> AsyncClient:
+) -> AsyncGenerator[AsyncClient, None]:
+    """A signed-in client, separate from the anonymous ``client``.
+
+    Depends on ``client`` only so the database override is installed for the
+    duration of the test.
+    """
     token, _ = user_token
-    client.headers["Authorization"] = f"Bearer {token}"
-    return client
+    async with _build_client({"Authorization": f"Bearer {token}"}) as ac:
+        yield ac
 
 
 @pytest_asyncio.fixture
@@ -175,6 +194,14 @@ async def admin_token(client: AsyncClient, db: AsyncSession) -> str:
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["data"]["access_token"]
+
+
+@pytest_asyncio.fixture
+async def admin_client(
+    client: AsyncClient, admin_token: str
+) -> AsyncGenerator[AsyncClient, None]:
+    async with _build_client({"Authorization": f"Bearer {admin_token}"}) as ac:
+        yield ac
 
 
 @pytest_asyncio.fixture

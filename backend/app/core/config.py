@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60, ge=1)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, ge=1)
+    # bcrypt work factor. 12 is the production default; the test suite drops
+    # this to 4 so hashing does not dominate the run. Never lower it in a
+    # real environment.
+    BCRYPT_ROUNDS: int = Field(default=12, ge=4, le=16)
 
     # --- CORS ---
     # Comma-separated in .env, e.g. "http://localhost:3000,http://127.0.0.1:3000"

@@ -15,6 +15,7 @@ Paginated payloads nest ``{"items": [...], "pagination": {...}}`` *inside*
 """
 
 import math
+from decimal import Decimal
 from typing import Any, Generic, Sequence, TypeVar
 
 from fastapi.responses import JSONResponse
@@ -22,6 +23,16 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 T = TypeVar("T")
+
+# Money is Numeric(12,2) in PostgreSQL. FastAPI's default encoder turns a
+# Decimal into a JSON float, which is the wrong representation for currency --
+# it invites accumulated rounding error on the client. Encoding every Decimal
+# as a string keeps the exact value intact end to end.
+DECIMAL_AS_STRING: dict[Any, Any] = {Decimal: str}
+
+
+def encode(value: Any) -> Any:
+    return jsonable_encoder(value, custom_encoder=DECIMAL_AS_STRING)
 
 
 class ErrorDetail(BaseModel):
@@ -69,7 +80,7 @@ def success(
     ``warnings`` (refinement R6) carries non-fatal advisories such as
     overlapping stop dates: the request succeeded, but the UI should flag it.
     """
-    payload = jsonable_encoder(data)
+    payload = encode(data)
     if warnings:
         if payload is None:
             payload = {}
@@ -96,7 +107,7 @@ def paginated(
 ) -> JSONResponse:
     return success(
         {
-            "items": jsonable_encoder(items),
+            "items": encode(items),
             "pagination": PaginationMeta.build(
                 page=page, limit=limit, total=total
             ).model_dump(),
@@ -118,6 +129,6 @@ def error(
             "success": False,
             "message": message,
             "data": None,
-            "error": {"code": code, "details": jsonable_encoder(details or {})},
+            "error": {"code": code, "details": encode(details or {})},
         },
     )

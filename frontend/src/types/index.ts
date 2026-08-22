@@ -39,6 +39,7 @@ export interface User {
   phone: string;
   city: string;
   country: string;
+  bio?: string;
   additional_info?: string;
   avatar_url?: string;
   role: "user" | "admin";
@@ -58,6 +59,7 @@ export interface RegisterPayload {
   last_name: string;
   email: string;
   password: string;
+  role?: "user" | "admin";
   phone?: string;
   city?: string;
   country?: string;
@@ -71,6 +73,7 @@ export interface RegisterPayload {
 export interface LoginPayload {
   email: string;
   password?: string;
+  role?: "user" | "admin";
 }
 
 export interface AuthResponse {

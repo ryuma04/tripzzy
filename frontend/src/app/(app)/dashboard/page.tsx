@@ -23,10 +23,12 @@ import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { SearchBar } from "@/components/ui/search-bar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { mockTrips, mockDestinations, mockCurrentUser } from "@/data/mock";
+import { mockTrips, mockDestinations } from "@/data/mock";
+import { useAuthUser } from "@/lib/auth";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuthUser();
   const [searchQuery, setSearchQuery] = useState("");
 
   const activeTrip = mockTrips.find((t) => t.status === "ongoing") || mockTrips[0];
@@ -50,7 +52,7 @@ export default function DashboardPage() {
                 ACTIVE EXPLORER STATION
               </span>
               <span className="text-xs font-bold text-neutral-700">
-                Welcome back, {mockCurrentUser.first_name}!
+                Welcome back, {user.first_name}!
               </span>
             </div>
 

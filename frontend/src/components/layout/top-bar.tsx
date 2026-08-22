@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Search,
   Bell,
@@ -10,13 +10,21 @@ import {
   Sparkles,
   MapPin,
   Calendar,
+  Shield,
+  Compass,
+  ArrowRightLeft,
 } from "lucide-react";
 import { NeoButton } from "@/components/ui/neo-button";
 import { Avatar } from "@/components/ui/avatar";
-import { mockCurrentUser } from "@/data/mock";
+import { useAuthUser } from "@/lib/auth";
+import { useToast } from "@/components/ui/toast";
 
 export const TopBar: React.FC = () => {
   const router = useRouter();
+  const pathname = usePathname() || "";
+  const { user, isAdmin, setRole } = useAuthUser();
+  const { showToast } = useToast();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -24,6 +32,22 @@ export const TopBar: React.FC = () => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  const handleToggleRole = () => {
+    const newRole = isAdmin ? "user" : "admin";
+    setRole(newRole);
+    if (newRole === "admin") {
+      showToast("Switched to Admin Commander perspective!", "success");
+      if (!pathname.startsWith("/admin")) {
+        router.push("/admin");
+      }
+    } else {
+      showToast("Switched to Explorer User perspective!", "info");
+      if (pathname.startsWith("/admin")) {
+        router.push("/dashboard");
+      }
     }
   };
 
@@ -72,17 +96,44 @@ export const TopBar: React.FC = () => {
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 sm:gap-4 ml-auto">
-        {/* Quick Create Trip Button */}
-        <Link href="/trips/new">
-          <NeoButton
-            variant="primary"
-            size="sm"
-            leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
-            className="hidden sm:inline-flex"
-          >
-            New Trip
-          </NeoButton>
-        </Link>
+        {/* Quick Role Switcher Pill */}
+        <button
+          type="button"
+          onClick={handleToggleRole}
+          title={`Click to switch to ${isAdmin ? "User" : "Admin"} mode`}
+          className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer ${
+            isAdmin
+              ? "bg-[#E51919] text-white"
+              : "bg-[#FFFFFF] text-[#171313] hover:bg-[#FAECDC]"
+          }`}
+        >
+          {isAdmin ? (
+            <>
+              <Shield className="w-3.5 h-3.5 fill-white" />
+              <span>Admin Mode</span>
+            </>
+          ) : (
+            <>
+              <Compass className="w-3.5 h-3.5 text-[#E51919]" />
+              <span>User Mode</span>
+            </>
+          )}
+          <ArrowRightLeft className="w-3 h-3 opacity-70 ml-1" />
+        </button>
+
+        {/* Quick Create Trip Button (for users only) */}
+        {!isAdmin && (
+          <Link href="/trips/new">
+            <NeoButton
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
+              className="hidden sm:inline-flex"
+            >
+              New Trip
+            </NeoButton>
+          </Link>
+        )}
 
         {/* Notifications Dropdown Toggle */}
         <div className="relative">
@@ -137,16 +188,21 @@ export const TopBar: React.FC = () => {
         {/* User Profile Header Link */}
         <Link
           href="/profile"
-          className="flex items-center gap-2 pl-2 border-l-2 border-[#171313] hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2.5 pl-2 border-l-2 border-[#171313] hover:opacity-90 transition-opacity"
         >
           <Avatar
-            src={mockCurrentUser.avatar_url}
-            name={`${mockCurrentUser.first_name} ${mockCurrentUser.last_name}`}
+            src={user.avatar_url}
+            name={`${user.first_name} ${user.last_name}`}
             size="sm"
           />
-          <span className="hidden md:inline font-display font-extrabold text-xs uppercase text-[#171313]">
-            {mockCurrentUser.first_name}
-          </span>
+          <div className="hidden md:flex flex-col text-left">
+            <span className="font-display font-black text-xs text-[#171313] leading-none">
+              {user.first_name}
+            </span>
+            <span className="text-[9px] font-extrabold text-neutral-500 uppercase tracking-tight mt-0.5">
+              {isAdmin ? "Admin" : "Explorer"}
+            </span>
+          </div>
         </Link>
       </div>
     </header>

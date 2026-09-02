@@ -1,9 +1,17 @@
 """Test fixtures.
 
-Runs against a dedicated ``tripzyy_test`` database that is dropped and rebuilt
-for each session, so tests never touch development data. Email verification and
-rate limiting are disabled by default; the tests that cover them turn them back
-on explicitly.
+PostgreSQL is hosted (Neon), and there is no local server to spin a throwaway
+database up on. So the suite isolates itself in a dedicated ``tripzyy_test``
+**schema** inside the same database instead: every table and enum it creates
+lands there, and the whole schema is dropped at the end of the session. The
+application's own tables live in ``public`` and are never in the search path,
+so a test cannot see -- let alone truncate -- real data.
+
+Set ``TEST_DATABASE_URL`` to point the suite at a different instance (a Neon
+branch, say). It falls back to ``DATABASE_URL``.
+
+Email verification and rate limiting are disabled by default; the tests that
+cover them turn them back on explicitly.
 """
 
 
@@ -13,10 +21,13 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 
+# The schema the suite owns. Everything it creates is namespaced here, and
+# ``_schema`` drops it wholesale on the way out.
+TEST_SCHEMA = "tripzyy_test"
+
 # Must be set before app.core.config is imported anywhere.
-os.environ["DATABASE_URL"] = (
-    "postgresql+asyncpg://postgres:ryuma@localhost:5432/tripzyy_test"
-)
+if os.environ.get("TEST_DATABASE_URL"):
+    os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
 os.environ["REQUIRE_EMAIL_VERIFICATION"] = "false"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 # Blank the SMTP credentials that .env supplies, so the suite can never send
@@ -55,7 +66,39 @@ from app.core.security import hash_password  # noqa: E402
 # function-scoped tests on *different* event loops, and a pooled asyncpg
 # connection cannot be reused across loops. NullPool opens a fresh connection
 # per checkout, so every loop gets its own.
-engine = create_async_engine(settings.database_url_str, poolclass=NullPool)
+#
+def _direct_endpoint(url: str) -> str:
+    """Route tests at Neon's direct endpoint rather than its PgBouncer one.
+
+    The suite drops and recreates its schema on every run, which gives the
+    enum types new OIDs each time. Through the ``-pooler`` endpoint those runs
+    land on server connections that were already introspected against the
+    previous OIDs, and the next INSERT dies with ``cache lookup failed for
+    type NNNNN`` on a cast like ``$9::tripzyy_test.user_role``. Disabling the
+    statement caches is not enough, because the stale state lives in the
+    pooled backend rather than in the driver.
+
+    The application keeps using the pooler -- it never redefines types, and it
+    wants the connection multiplexing. Tests do not.
+    """
+    return url.replace("-pooler.", ".", 1)
+
+
+# Isolation is done with ``schema_translate_map``, not ``search_path``.
+#
+# The obvious approach -- passing ``search_path`` in asyncpg's server_settings
+# -- does not survive the connection: PgBouncer does not forward arbitrary
+# startup parameters, so it is silently discarded and every name resolves in
+# ``public`` instead. ``SET search_path`` per connection is no better, because
+# transaction pooling can hand the next transaction to a different backend.
+#
+# schema_translate_map sidesteps all of that by making SQLAlchemy emit
+# fully-qualified ``tripzyy_test.<table>`` in the SQL itself, so correctness
+# never depends on connection state.
+engine = create_async_engine(
+    _direct_endpoint(settings.database_url_str),
+    poolclass=NullPool,
+).execution_options(schema_translate_map={None: TEST_SCHEMA})
 
 TestSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
@@ -64,16 +107,28 @@ TestSessionLocal = async_sessionmaker(
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _schema():
-    """Build the schema once per session, tear it down at the end."""
-    assert "tripzyy_test" in settings.database_url_str, (
-        "Refusing to run tests against a database that is not tripzyy_test"
+    """Build the test schema once per session, drop it at the end."""
+    # The guard that matters is where statements actually land, not what the
+    # URL says. If the translate map were ever lost, every unqualified name
+    # would silently resolve in ``public`` -- against real data -- so refuse
+    # to run rather than find out during a DROP.
+    mapped = engine.get_execution_options().get("schema_translate_map") or {}
+    assert mapped.get(None) == TEST_SCHEMA, (
+        f"Refusing to run: statements are not namespaced to {TEST_SCHEMA!r} "
+        f"(schema_translate_map={mapped!r}). Aborting before touching data."
     )
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # CASCADE also takes the enum types with it, which drop_all leaves
+        # behind and which would otherwise collide on the next run.
+        await conn.execute(text(f'DROP SCHEMA IF EXISTS "{TEST_SCHEMA}" CASCADE'))
+        await conn.execute(text(f'CREATE SCHEMA "{TEST_SCHEMA}"'))
         await conn.run_sync(Base.metadata.create_all)
+
     yield
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text(f'DROP SCHEMA IF EXISTS "{TEST_SCHEMA}" CASCADE'))
     await engine.dispose()
 
 
@@ -81,7 +136,12 @@ async def _schema():
 async def _clean_tables():
     """Truncate between tests so each one starts from a known state."""
     limiter.reset()
-    table_list = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    # Qualified by hand: schema_translate_map rewrites SQLAlchemy-constructed
+    # statements, not raw text(), so an unqualified name here would truncate
+    # the application's tables in ``public``.
+    table_list = ", ".join(
+        f'"{TEST_SCHEMA}"."{t.name}"' for t in Base.metadata.sorted_tables
+    )
     async with engine.begin() as conn:
         # CASCADE handles the FK graph, so declaration order does not matter.
         await conn.execute(

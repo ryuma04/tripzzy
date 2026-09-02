@@ -35,6 +35,8 @@ from app.models import (
     UserPreference,
     UserRole,
 )
+from app.seed.staff import seed_staff
+from app.seed.supply import seed_supply
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(message)s")
 logger = logging.getLogger("seed")
@@ -286,8 +288,11 @@ async def main(demo: bool) -> None:
         try:
             destinations = await seed_destinations(session)
             await seed_activities(session, destinations)
+            await seed_supply(session, destinations)
             if demo:
                 await seed_demo(session, destinations)
+                # Needs the operator from seed_supply to exist first.
+                await seed_staff(session)
             await session.commit()
         except Exception:
             await session.rollback()

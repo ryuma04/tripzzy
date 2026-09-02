@@ -133,11 +133,16 @@ def _register_routers(app: FastAPI) -> None:
         activities,
         admin,
         auth,
+        billing,
+        bookings,
         calendar,
         community,
         destinations,
+        inventory,
         itinerary,
         logistics,
+        notifications,
+        operator,
         places,
         stops,
         trips,
@@ -147,12 +152,21 @@ def _register_routers(app: FastAPI) -> None:
     prefix = settings.API_V1_PREFIX
     for module in (
         auth, users, trips, stops, itinerary, destinations, activities,
-        calendar, admin, places
+        calendar, admin, places, notifications, inventory, operator
     ):
         app.include_router(module.router, prefix=prefix)
 
     for extra in (community.community_router, community.public_router):
         app.include_router(extra, prefix=prefix)
+
+    for split_router in (billing.trip_splits_router, billing.splits_router):
+        app.include_router(split_router, prefix=prefix)
+
+    for booking_router in (
+        bookings.trip_bookings_router,
+        bookings.bookings_router,
+    ):
+        app.include_router(booking_router, prefix=prefix)
 
     for item_router in (
         logistics.transport_router,

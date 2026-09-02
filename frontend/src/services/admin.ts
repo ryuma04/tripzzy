@@ -3,27 +3,66 @@
 // ═══════════════════════════════════════════
 
 import { apiClient } from "@/lib/api";
-import type { AdminDashboard, User } from "@/types";
+import type {
+  ActivityAnalytics,
+  AdminDashboard,
+  DestinationAnalytics,
+  PaginatedResponse,
+  Trip,
+  TripAnalytics,
+  User,
+} from "@/types";
 
 export const adminService = {
-  getDashboard: () =>
-    apiClient.get<AdminDashboard>("/admin/dashboard"),
+  getDashboard: () => apiClient.get<AdminDashboard>("/admin/dashboard"),
 
-  getUsers: (page = 1, limit = 20) =>
-    apiClient.get<{ items: User[]; total: number }>(`/admin/users?page=${page}&limit=${limit}`),
+  getUsers: (params?: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    role?: "user" | "admin";
+    status?: "active" | "suspended" | "deleted";
+  }) => {
+    const query = new URLSearchParams({
+      page: String(params?.page ?? 1),
+      limit: String(params?.limit ?? 20),
+    });
+    if (params?.q) query.set("q", params.q);
+    if (params?.role) query.set("role", params.role);
+    if (params?.status) query.set("status", params.status);
+    return apiClient.get<PaginatedResponse<User>>(`/admin/users?${query}`);
+  },
 
-  getUser: (userId: string) =>
-    apiClient.get<User>(`/admin/users/${userId}`),
+  getUser: (userId: string) => apiClient.get<User>(`/admin/users/${userId}`),
 
-  updateUserStatus: (userId: string, status: { is_active?: boolean; role?: "user" | "admin" }) =>
-    apiClient.put<User>(`/admin/users/${userId}/status`, status),
+  /**
+   * Suspend or reactivate an account.
+   *
+   * Status only — the endpoint deliberately has no role field, so an admin
+   * cannot mint another admin through it.
+   */
+  setUserStatus: (userId: string, status: "active" | "suspended" | "deleted") =>
+    apiClient.put<User>(`/admin/users/${userId}/status`, { status }),
 
-  getTripAnalytics: () =>
-    apiClient.get<{ trends: { month: string; count: number }[] }>("/admin/analytics/trips"),
+  getTrips: (params?: { page?: number; limit?: number; q?: string }) => {
+    const query = new URLSearchParams({
+      page: String(params?.page ?? 1),
+      limit: String(params?.limit ?? 20),
+    });
+    if (params?.q) query.set("q", params.q);
+    return apiClient.get<PaginatedResponse<Trip>>(`/admin/trips?${query}`);
+  },
 
-  getDestinationAnalytics: () =>
-    apiClient.get<{ destinations: { name: string; trips: number }[] }>("/admin/analytics/destinations"),
+  getTripAnalytics: (months = 12) =>
+    apiClient.get<TripAnalytics>(`/admin/analytics/trips?months=${months}`),
 
-  getActivityAnalytics: () =>
-    apiClient.get<{ categories: { category: string; count: number }[] }>("/admin/analytics/activities"),
+  getDestinationAnalytics: (limit = 20) =>
+    apiClient.get<DestinationAnalytics>(
+      `/admin/analytics/destinations?limit=${limit}`
+    ),
+
+  getActivityAnalytics: (limit = 20) =>
+    apiClient.get<ActivityAnalytics>(
+      `/admin/analytics/activities?limit=${limit}`
+    ),
 };

@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════
 
 import { apiClient } from "@/lib/api";
-import type { User, UserPreferences } from "@/types";
+import type { UpdatePreferencesPayload, User, UserPreferences } from "@/types";
 
 export const userService = {
   getProfile: () => apiClient.get<User>("/users/me"),
@@ -14,7 +14,11 @@ export const userService = {
   getPreferences: () =>
     apiClient.get<UserPreferences>("/users/me/preferences"),
 
-  updatePreferences: (preferences: UserPreferences) =>
+  /**
+   * Partial by design: the endpoint uses `exclude_unset`, so omitting a
+   * field leaves the stored value alone rather than nulling it.
+   */
+  updatePreferences: (preferences: UpdatePreferencesPayload) =>
     apiClient.put<UserPreferences>("/users/me/preferences", preferences),
 
   changePassword: (payload: {

@@ -53,6 +53,7 @@ async def list_trips(
     db: DbSession,
     pagination: Pagination,
     status: Annotated[TripStatus | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=100)] = None,
     sort_by: Annotated[SortBy, Query()] = "created_at",
     sort_order: Annotated[Literal["asc", "desc"], Query()] = "desc",
 ):
@@ -61,6 +62,7 @@ async def list_trips(
         offset=pagination.offset,
         limit=pagination.limit,
         status=status,
+        q=q,
         sort_by=sort_by,
         sort_order=sort_order,
     )

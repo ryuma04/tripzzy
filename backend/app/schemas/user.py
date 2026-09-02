@@ -2,12 +2,22 @@
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core import validators
-from app.models.enums import ActivityCategory, UserRole, UserStatus
+from app.models.enums import (
+    ActivityCategory,
+    ComfortTier,
+    TransportType,
+    TravelPace,
+    TravelStyle,
+    UserRole,
+    UserStatus,
+)
+from app.schemas.common import Money
 
 
 class UserResponse(BaseModel):
@@ -111,6 +121,19 @@ class PreferencesResponse(BaseModel):
     home_country: str | None = None
     email_notifications: bool
 
+    # --- Personalisation intake ---
+    # Null means "not stated", which is different from "no preference" and is
+    # why none of these carry a default.
+    travel_style: TravelStyle | None = None
+    pace: TravelPace | None = None
+    accommodation_class: ComfortTier | None = None
+    transport_class: ComfortTier | None = None
+    preferred_transport_modes: list[str] = []
+    interests: list[str] = []
+    dietary_requirements: list[str] = []
+    mobility_needs: str | None = None
+    daily_budget_cap: Decimal | None = None
+
 
 class PreferencesUpdateRequest(BaseModel):
     currency: Annotated[str | None, Field(min_length=3, max_length=3)] = None
@@ -119,6 +142,43 @@ class PreferencesUpdateRequest(BaseModel):
     home_city: Annotated[str | None, Field(max_length=100)] = None
     home_country: Annotated[str | None, Field(max_length=100)] = None
     email_notifications: bool | None = None
+
+    # --- Personalisation intake ---
+    travel_style: TravelStyle | None = None
+    pace: TravelPace | None = None
+    accommodation_class: ComfortTier | None = None
+    transport_class: ComfortTier | None = None
+    preferred_transport_modes: list[TransportType] | None = None
+    interests: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=40)]] | None,
+        Field(max_length=30),
+    ] = None
+    dietary_requirements: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=40)]] | None,
+        Field(max_length=20),
+    ] = None
+    mobility_needs: Annotated[str | None, Field(max_length=1000)] = None
+    daily_budget_cap: Money | None = None
+
+    @field_validator("preferred_transport_modes")
+    @classmethod
+    def _modes(cls, v: list[TransportType] | None) -> list[TransportType] | None:
+        # Order is the preference ranking, so de-duplicate without sorting.
+        return list(dict.fromkeys(v)) if v is not None else None
+
+    @field_validator("interests", "dietary_requirements")
+    @classmethod
+    def _tags(cls, v: list[str] | None) -> list[str] | None:
+        """Normalise free text so "Street Food" and "street food" are one tag.
+
+        These are matched against vendor service tags when ranking
+        alternatives; without folding, near-duplicates would quietly split a
+        traveller's stated interest across two buckets and weaken the match.
+        """
+        if v is None:
+            return None
+        cleaned = [t.strip().lower() for t in v if t and t.strip()]
+        return list(dict.fromkeys(cleaned))
 
     @field_validator("currency")
     @classmethod

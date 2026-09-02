@@ -175,3 +175,19 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
+
+/**
+ * Pulls the list out of a response that may be either a bare array or the
+ * paginated `{ items, pagination }` envelope.
+ *
+ * Both shapes are in use: list endpoints paginate, while a few return a plain
+ * array. Callers were each re-deriving this with an inline `Array.isArray`
+ * ternary and an `as any`, so the handling is centralised here instead.
+ */
+export function unwrapItems<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === "object" && Array.isArray((data as any).items)) {
+    return (data as any).items as T[];
+  }
+  return [];
+}

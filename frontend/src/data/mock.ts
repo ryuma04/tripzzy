@@ -5,7 +5,7 @@
 
 import type {
   User, Destination, Activity, Trip, CommunityTrip,
-  AdminDashboard, CalendarEvent, Expense, BudgetSummary
+  CalendarEvent, Expense, BudgetSummary
 } from "@/types";
 
 export const mockCurrentUser: User = {
@@ -676,61 +676,5 @@ export const mockCommunityTrips: CommunityTrip[] = [
   }
 ];
 
-export const mockAdminDashboard: AdminDashboard = {
-  total_users: 14280,
-  total_trips: 38650,
-  total_destinations: 240,
-  total_activities: 1850,
-  recent_users: [
-    mockCurrentUser,
-    {
-      id: "usr_02",
-      first_name: "Aanya",
-      last_name: "Deshmukh",
-      email: "aanya.d@gmail.com",
-      phone: "+91 98220 11223",
-      city: "Pune",
-      country: "India",
-      role: "user",
-      created_at: "2026-08-20T10:00:00Z",
-      updated_at: "2026-08-20T10:00:00Z",
-    },
-    {
-      id: "usr_03",
-      first_name: "Rohan",
-      last_name: "Verma",
-      email: "rohan.v@outlook.com",
-      phone: "+91 97110 33445",
-      city: "Bengaluru",
-      country: "India",
-      role: "user",
-      created_at: "2026-08-19T14:30:00Z",
-      updated_at: "2026-08-19T14:30:00Z",
-    }
-  ],
-  recent_trips: mockTrips,
-  trip_trends: [
-    { month: "Jan", count: 2400 },
-    { month: "Feb", count: 2900 },
-    { month: "Mar", count: 3200 },
-    { month: "Apr", count: 3800 },
-    { month: "May", count: 4600 },
-    { month: "Jun", count: 4100 },
-    { month: "Jul", count: 3900 },
-    { month: "Aug", count: 4850 },
-  ],
-  popular_destinations: [
-    { name: "Goa", trips: 12450 },
-    { name: "Manali", trips: 9200 },
-    { name: "Mumbai", trips: 7800 },
-    { name: "Jaipur", trips: 6400 },
-    { name: "Kerala", trips: 5900 },
-    { name: "Gokarna", trips: 4300 },
-  ],
-  activity_categories: [
-    { category: "Adventure & Trekking", count: 680 },
-    { category: "Historical & Culture", count: 490 },
-    { category: "Food & Nightlife", count: 380 },
-    { category: "Leisure & Nature", count: 300 },
-  ],
-};
+// mockAdminDashboard lived here. The admin console reads /admin/dashboard
+// and /admin/analytics/* now, so there is nothing left to fake.

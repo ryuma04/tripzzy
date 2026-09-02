@@ -14,7 +14,7 @@ import type {
   RegisterPayload,
   User,
 } from "@/types";
-import { mockCurrentUser } from "@/data/mock";
+
 
 export interface RegisterResultData {
   user: User;
@@ -42,49 +42,21 @@ export async function login(
       ? { email: payloadOrEmail, password: password || "", role: role || "user" }
       : payloadOrEmail;
 
-  try {
-    const res = await apiClient.post<AuthResponse>("/auth/login", payload, false);
-    if (res.success && res.data && res.data.access_token) {
-      localStorage.setItem("tripzyy_token", res.data.access_token);
-      if (res.data.user) {
-        localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
-      }
-      dispatchAuthChange();
-      return res;
+  const res = await apiClient.post<AuthResponse>("/auth/login", payload, false);
+  if (res.success && res.data?.access_token) {
+    localStorage.setItem("tripzyy_token", res.data.access_token);
+    if (res.data.user) {
+      localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
     }
-    // If the server responded with an error (e.g. 401 Unauthorized), return the real error
-    if (!res.success && res.error?.code !== "NETWORK_ERROR") {
-      return res;
-    }
-  } catch (err) {
-    // Graceful fallback for offline / mock dev mode
-  }
-  
-  // Local fallback session (only when backend is offline)
-  const fallbackRole: "user" | "admin" = payload.role || (payload.email.toLowerCase().includes("admin") ? "admin" : "user");
-  const fallbackUser: User = {
-    ...mockCurrentUser,
-    email: payload.email,
-    role: fallbackRole,
-    first_name: payload.email.split("@")[0] || "Explorer",
-  };
-
-  if (typeof window !== "undefined") {
-    localStorage.setItem("tripzyy_token", "mock_jwt_token_" + Date.now());
-    localStorage.setItem("tripzyy_user", JSON.stringify(fallbackUser));
     dispatchAuthChange();
   }
-
-  return {
-    success: true,
-    message: "Signed in in offline mock mode",
-    data: {
-      access_token: "mock_jwt_token",
-      token_type: "bearer",
-      user: fallbackUser,
-    },
-    error: null,
-  };
+  // Anything else -- bad credentials, or the API being unreachable -- is
+  // returned as-is. There used to be an "offline mock mode" here that minted
+  // a local session when the request failed, and handed out `admin` if the
+  // email merely contained the word "admin". That turned an outage, or a
+  // pulled network cable, into a privilege escalation. A failed login is now
+  // just a failed login.
+  return res;
 }
 
 export async function requestLoginOtp(email: string) {
@@ -95,24 +67,23 @@ export async function requestLoginOtp(email: string) {
   );
 }
 
-export async function loginWithOtp(email: string, code: string, role?: "user" | "admin") {
-  try {
-    const res = await apiClient.post<AuthResponse>(
-      "/auth/login-otp",
-      { email, code },
-      false
-    );
-    if (res.success && res.data && res.data.access_token) {
-      localStorage.setItem("tripzyy_token", res.data.access_token);
-      if (res.data.user) {
-        localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
-      }
-      dispatchAuthChange();
-      return res;
+export async function loginWithOtp(email: string, code: string) {
+  const res = await apiClient.post<AuthResponse>(
+    "/auth/login-otp",
+    { email, code },
+    false
+  );
+  if (res.success && res.data?.access_token) {
+    localStorage.setItem("tripzyy_token", res.data.access_token);
+    if (res.data.user) {
+      localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
     }
-  } catch (err) {
-    // Graceful fallback
+    dispatchAuthChange();
   }
+  // Always returned: the previous version fell off the end of the function on
+  // any non-success path, so callers reading `res.success` hit a TypeError on
+  // undefined rather than seeing the error.
+  return res;
 }
 
 export async function register(payload: RegisterPayload) {
@@ -131,26 +102,24 @@ export async function register(payload: RegisterPayload) {
     role: targetRole,
   };
 
-  try {
-    const res = await apiClient.post<RegisterResultData>(
-      "/auth/register",
-      backendPayload,
-      false
-    );
+  const res = await apiClient.post<RegisterResultData>(
+    "/auth/register",
+    backendPayload,
+    false
+  );
 
-    if (res.success && res.data) {
-      if (res.data.access_token) {
-        localStorage.setItem("tripzyy_token", res.data.access_token);
-      }
-      if (res.data.user) {
-        localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
-      }
-      dispatchAuthChange();
-      return res;
+  if (res.success && res.data) {
+    // Absent when the server requires email verification first, in which
+    // case the caller routes to the OTP step instead of the dashboard.
+    if (res.data.access_token) {
+      localStorage.setItem("tripzyy_token", res.data.access_token);
     }
-  } catch (err) {
-    // Graceful fallback
+    if (res.data.user) {
+      localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
+    }
+    dispatchAuthChange();
   }
+  return res;
 }
 
 export async function verifyOtp(email: string, code: string) {
@@ -208,29 +177,34 @@ export async function uploadAvatar(file: File) {
   return res;
 }
 
-export function getStoredUser(): User {
-  if (typeof window === "undefined") return mockCurrentUser;
+/**
+ * The signed-in user, or null when nobody is signed in.
+ *
+ * This used to fall back to `mockCurrentUser`, whose role is `"admin"` --
+ * so before localStorage was read (and permanently, if it was empty) every
+ * visitor looked like an administrator to the UI. Absence is now represented
+ * honestly, and callers branch on it.
+ */
+export function getStoredUser(): User | null {
+  if (typeof window === "undefined") return null;
   const data = localStorage.getItem("tripzyy_user");
-  if (!data) return mockCurrentUser;
+  if (!data) return null;
   try {
     return JSON.parse(data) as User;
   } catch {
-    return mockCurrentUser;
+    return null;
   }
 }
 
-export function updateStoredUser(updates: Partial<User>): User {
+export function updateStoredUser(updates: Partial<User>): User | null {
   const current = getStoredUser();
+  if (!current) return null;
   const updated: User = { ...current, ...updates };
   if (typeof window !== "undefined") {
     localStorage.setItem("tripzyy_user", JSON.stringify(updated));
     dispatchAuthChange();
   }
   return updated;
-}
-
-export function setStoredUserRole(role: "user" | "admin"): User {
-  return updateStoredUser({ role });
 }
 
 export function getStoredToken(): string | null {
@@ -243,21 +217,26 @@ export function isAuthenticated(): boolean {
 }
 
 /**
- * React hook to listen to real-time auth and role changes
+ * React hook exposing the signed-in user, kept in sync across tabs.
+ *
+ * Starts at `null` on both the server and the first client render, so
+ * hydration matches without pretending somebody is signed in. Read
+ * `isMounted` before rendering anything that depends on identity, otherwise
+ * the signed-out state flashes for one frame.
+ *
+ * There is deliberately no `setRole` here any more. It wrote a role straight
+ * into localStorage, which let anyone grant themselves `admin` from the
+ * browser console. Roles come from the server, on the token, and nowhere else.
  */
 export function useAuthUser() {
-  // Initialize with mockCurrentUser to ensure server and client match during hydration
-  const [user, setUser] = useState<User>(mockCurrentUser);
+  const [user, setUser] = useState<User | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const handleAuthChange = () => {
-      setUser(getStoredUser());
-    };
+    const handleAuthChange = () => setUser(getStoredUser());
 
-    // Sync real data on mount
-    setUser(getStoredUser());
+    handleAuthChange();
 
     window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChange);
     window.addEventListener("storage", handleAuthChange);
@@ -269,10 +248,9 @@ export function useAuthUser() {
 
   return {
     user,
-    role: user.role,
-    isAdmin: user.role === "admin",
-    isUser: user.role === "user",
-    setRole: setStoredUserRole,
+    role: user?.role ?? null,
+    isAdmin: user?.role === "admin",
+    isUser: user?.role === "user",
     updateUser: updateStoredUser,
     isMounted: mounted,
   };

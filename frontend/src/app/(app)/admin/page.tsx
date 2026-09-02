@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ShieldAlert,
@@ -34,62 +34,106 @@ import { NeoBarChart } from "@/components/charts/neo-bar-chart";
 import { NeoPieChart } from "@/components/charts/neo-pie-chart";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
-import { mockAdminDashboard, mockTrips, mockDestinations } from "@/data/mock";
 import { useAuthUser } from "@/lib/auth";
-import type { User, Trip } from "@/types";
+import { adminService } from "@/services/admin";
+import { destinationService } from "@/services/destinations";
+import { unwrapItems } from "@/lib/api";
+import { ErrorState } from "@/components/ui/error-state";
+import type {
+  User,
+  Trip,
+  Destination,
+  AdminDashboard,
+  TripAnalytics,
+  DestinationAnalytics,
+  ActivityAnalytics,
+} from "@/types";
 
 export default function AdminPage() {
   const { showToast } = useToast();
-  const { user, isAdmin, setRole } = useAuthUser();
+  const { user, isAdmin } = useAuthUser();
 
   const [activeTab, setActiveTab] = useState("overview");
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<"all" | "user" | "admin">("all");
   const [tripStatusFilter, setTripStatusFilter] = useState<string>("all");
-  const [usersList, setUsersList] = useState<User[]>(mockAdminDashboard.recent_users);
-  const [tripsList, setTripsList] = useState<Trip[]>(mockTrips);
+  // Everything below comes from /admin/*. This page previously rendered
+  // `mockAdminDashboard`, `mockTrips` and `mockDestinations` and never called
+  // the API at all, so every number an administrator saw was invented.
+  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
+  const [tripStats, setTripStats] = useState<TripAnalytics | null>(null);
+  const [destStats, setDestStats] = useState<DestinationAnalytics | null>(null);
+  const [activityStats, setActivityStats] = useState<ActivityAnalytics | null>(null);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [catalogDestinations, setCatalogDestinations] = useState<Destination[]>([]);
+  const [tripsList, setTripsList] = useState<Trip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadAdminData = React.useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    const [dash, trips, dests, acts, users, tripRows, catalog] =
+      await Promise.all([
+        adminService.getDashboard(),
+        adminService.getTripAnalytics(),
+        adminService.getDestinationAnalytics(6),
+        adminService.getActivityAnalytics(),
+        adminService.getUsers({ limit: 50 }),
+        adminService.getTrips({ limit: 50 }),
+        destinationService.search({ limit: 60 }),
+      ]);
+
+    if (!dash.success) {
+      setLoadError(dash.message || "Could not load platform statistics.");
+      setIsLoading(false);
+      return;
+    }
+    setDashboard(dash.data);
+    if (trips.success) setTripStats(trips.data);
+    if (dests.success) setDestStats(dests.data);
+    if (acts.success) setActivityStats(acts.data);
+    if (users.success) setUsersList(unwrapItems<User>(users.data));
+    if (tripRows.success) setTripsList(unwrapItems<Trip>(tripRows.data));
+    if (catalog.success)
+      setCatalogDestinations(unwrapItems<Destination>(catalog.data));
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) loadAdminData();
+  }, [isAdmin, loadAdminData]);
 
   const tabs = [
     { id: "overview", label: "Analytics & KPI Overview", icon: <BarChart3 className="w-4 h-4" /> },
     { id: "users", label: "User Governance", count: usersList.length, icon: <Users className="w-4 h-4" /> },
     { id: "trips", label: "Platform Trips", count: tripsList.length, icon: <MapPin className="w-4 h-4" /> },
-    { id: "catalog", label: "Destinations & Catalog", count: mockDestinations.length, icon: <Compass className="w-4 h-4" /> },
+    { id: "catalog", label: "Destinations & Catalog", count: dashboard?.content.destinations ?? 0, icon: <Compass className="w-4 h-4" /> },
   ];
 
-  const handleToggleRole = (userId: string) => {
-    setUsersList(
-      usersList.map((u) => {
-        if (u.id === userId) {
-          const newRole = u.role === "admin" ? "user" : "admin";
-          showToast(`User ${u.first_name} role changed to ${newRole.toUpperCase()}`, "success");
-          return { ...u, role: newRole };
-        }
-        return u;
-      })
-    );
-  };
-
-  const handleElevateRole = () => {
-    setRole("admin");
-    showToast("Promoted to Station Administrator! Access granted.", "success");
-  };
-
-  const handleAddUser = () => {
-    const newUser: User = {
-      id: "usr_" + Math.random().toString(36).substring(2, 7),
-      first_name: "Aarav",
-      last_name: "Patel",
-      email: `aarav.${Math.floor(Math.random() * 1000)}@tripzyy.com`,
-      phone: "+91 98112 33445",
-      city: "Bengaluru",
-      country: "India",
-      role: "user",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      avatar_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
-    };
-    setUsersList([newUser, ...usersList]);
-    showToast(`Created system account for ${newUser.first_name} ${newUser.last_name}`, "success");
+  /**
+   * Suspend or reactivate an account.
+   *
+   * This replaces a role toggle that only ever mutated local React state --
+   * it reported "role changed to ADMIN" and nothing was written anywhere.
+   * There is deliberately no role-granting action here either: the status
+   * endpoint takes a status and nothing else, so the admin console cannot
+   * mint another admin.
+   */
+  const handleToggleStatus = async (target: User) => {
+    const next = target.status === "suspended" ? "active" : "suspended";
+    const res = await adminService.setUserStatus(target.id, next);
+    if (res.success && res.data) {
+      setUsersList((prev) =>
+        prev.map((u) => (u.id === target.id ? { ...u, status: next } : u))
+      );
+      showToast(
+        `${target.first_name} ${target.last_name} is now ${next}.`,
+        "success"
+      );
+    } else {
+      showToast(res.message || "Could not update that account.", "error");
+    }
   };
 
   const filteredUsers = usersList.filter((u) => {
@@ -107,7 +151,7 @@ export default function AdminPage() {
     return t.status === tripStatusFilter;
   });
 
-  const pieData = mockAdminDashboard.activity_categories.map((c, i) => {
+  const pieData = (activityStats?.by_category ?? []).map((c, i) => {
     const colors = ["#E51919", "#FAECDC", "#171313", "#FCA5A5", "#15803D"];
     return {
       name: c.category,
@@ -116,8 +160,9 @@ export default function AdminPage() {
     };
   });
 
-  // Access check fallback if non-admin visits
-  if (!isAdmin) {
+  // Access check fallback if non-admin visits. Testing `user` as well as
+  // `isAdmin` is what narrows `user` to non-null for the rest of the render.
+  if (!user || !isAdmin) {
     return (
       <div className="max-w-2xl mx-auto py-12">
         <NeoCard className="p-8 bg-[#FFFFFF] border-[4px] border-[#171313] shadow-[8px_8px_0px_#171313] text-center">
@@ -131,25 +176,52 @@ export default function AdminPage() {
             Administrator Privileges Required
           </h2>
           <p className="text-sm font-medium text-neutral-600 mb-6 max-w-md mx-auto">
-            You are currently signed in as <span className="font-bold text-[#171313]">{user.first_name} ({user.role})</span>. The Admin Control Center is restricted to Station Administrators.
+            {user ? (
+              <>
+                You are signed in as{" "}
+                <span className="font-bold text-[#171313]">
+                  {user.first_name} ({user.role})
+                </span>
+                . The Admin Control Center is restricted to Station Administrators.
+              </>
+            ) : (
+              <>You need to sign in to view the Admin Control Center.</>
+            )}
           </p>
 
+          {/* There was an "Elevate to Station Admin" button here that simply
+              wrote role=admin into localStorage, so the access check above
+              could be walked straight past. Roles are granted server-side. */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <NeoButton
-              variant="primary"
-              size="lg"
-              onClick={handleElevateRole}
-              leftIcon={<Shield className="w-5 h-5 fill-white" />}
-            >
-              Elevate to Station Admin
-            </NeoButton>
-            <Link href="/dashboard">
+            <Link href={user ? "/dashboard" : "/login"}>
               <NeoButton variant="white" size="lg">
-                Return to Explorer Dashboard
+                {user ? "Return to Explorer Dashboard" : "Go to sign in"}
               </NeoButton>
             </Link>
           </div>
         </NeoCard>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="py-12">
+        <ErrorState
+          title="Could not load the control room"
+          message={loadError}
+          onRetry={loadAdminData}
+        />
+      </div>
+    );
+  }
+
+  if (isLoading && !dashboard) {
+    return (
+      <div className="p-12 text-center">
+        <div className="inline-block px-4 py-2 bg-[#FFD54A] border-2 border-[#171313] rounded-xl font-display font-extrabold text-sm shadow-[3px_3px_0px_#171313]">
+          Loading platform statistics...
+        </div>
       </div>
     );
   }
@@ -193,30 +265,30 @@ export default function AdminPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard
           label="Total Registered Users"
-          value={usersList.length.toLocaleString()}
-          trend="+12% this month"
-          trendPositive={true}
+          value={(dashboard?.users.total ?? 0).toLocaleString()}
+          trend={`+${dashboard?.users.new_last_30_days ?? 0} in 30 days`}
+          trendPositive={(dashboard?.users.new_last_30_days ?? 0) > 0}
           icon={<Users className="w-6 h-6 text-white" />}
           color="red"
         />
         <StatCard
           label="Total Trips Planned"
-          value={tripsList.length.toLocaleString()}
-          trend="+24% active"
-          trendPositive={true}
+          value={(dashboard?.trips.total ?? 0).toLocaleString()}
+          trend={`+${dashboard?.trips.new_last_30_days ?? 0} in 30 days`}
+          trendPositive={(dashboard?.trips.new_last_30_days ?? 0) > 0}
           icon={<MapPin className="w-6 h-6 text-[#E51919]" />}
           color="cream"
         />
         <StatCard
           label="Catalog Destinations"
-          value={mockDestinations.length}
+          value={(dashboard?.content.destinations ?? 0).toLocaleString()}
           icon={<Compass className="w-6 h-6 text-[#171313]" />}
           color="white"
         />
         <StatCard
           label="Curated Activities"
-          value={mockAdminDashboard.total_activities.toLocaleString()}
-          trend="+5% verified"
+          value={(dashboard?.content.catalog_activities ?? 0).toLocaleString()}
+          trend={`${dashboard?.content.scheduled_activities ?? 0} scheduled`}
           trendPositive={true}
           icon={<ActivityIcon className="w-6 h-6 text-[#E51919]" />}
           color="soft-red"
@@ -241,8 +313,13 @@ export default function AdminPage() {
                 </h3>
               </div>
               <NeoBarChart
-                data={mockAdminDashboard.trip_trends.map((t) => ({
-                  name: t.month,
+                data={(tripStats?.trips_per_month ?? []).map((t) => ({
+                  name: t.month
+                    ? new Date(t.month).toLocaleDateString("en-IN", {
+                        month: "short",
+                        year: "2-digit",
+                      })
+                    : "—",
                   value: t.count,
                 }))}
                 fillColor="#E51919"
@@ -267,9 +344,9 @@ export default function AdminPage() {
               Top 6 Trending Multi-City Hubs
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {mockAdminDashboard.popular_destinations.map((dest, i) => (
+              {(destStats?.most_visited ?? []).map((dest, i) => (
                 <div
-                  key={dest.name}
+                  key={dest.city_name}
                   className="p-4 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between shadow-[2px_2px_0px_#171313]"
                 >
                   <div className="flex items-center gap-3">
@@ -278,10 +355,10 @@ export default function AdminPage() {
                     </span>
                     <div>
                       <h5 className="font-display font-extrabold text-sm text-[#171313]">
-                        {dest.name}
+                        {dest.city_name}
                       </h5>
                       <span className="text-xs text-neutral-500 font-medium">
-                        {dest.trips.toLocaleString()} expeditions planned
+                        {dest.trip_count.toLocaleString()} trips • {dest.stop_count.toLocaleString()} stops
                       </span>
                     </div>
                   </div>
@@ -350,14 +427,16 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              {/* Add User Action */}
+              {/* There was an "Add User" button here that pushed an invented
+                  row into local state. Accounts are created through
+                  registration; there is no admin endpoint to mint one. */}
               <NeoButton
-                variant="primary"
+                variant="white"
                 size="sm"
-                onClick={handleAddUser}
-                leftIcon={<Plus className="w-3.5 h-3.5 stroke-[3]" />}
+                onClick={loadAdminData}
+                leftIcon={<ArrowRight className="w-3.5 h-3.5 stroke-[3]" />}
               >
-                Add User
+                Refresh
               </NeoButton>
             </div>
           </div>
@@ -412,11 +491,11 @@ export default function AdminPage() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <NeoButton
-                        variant={u.role === "admin" ? "white" : "cream"}
+                        variant={u.status === "suspended" ? "cream" : "white"}
                         size="sm"
-                        onClick={() => handleToggleRole(u.id)}
+                        onClick={() => handleToggleStatus(u)}
                       >
-                        Switch to {u.role === "admin" ? "User" : "Admin"}
+                        {u.status === "suspended" ? "Reactivate" : "Suspend"}
                       </NeoButton>
                     </td>
                   </tr>
@@ -528,21 +607,16 @@ export default function AdminPage() {
                   Verified Destination Hubs
                 </h3>
                 <span className="text-xs font-bold text-neutral-500">
-                  {mockDestinations.length} catalog destinations active
+                  {(dashboard?.content.destinations ?? 0).toLocaleString()} catalog destinations active
                 </span>
               </div>
-              <NeoButton
-                variant="primary"
-                size="sm"
-                onClick={() => showToast("Add destination modal opened.", "info")}
-                leftIcon={<Plus className="w-3.5 h-3.5 stroke-[3]" />}
-              >
-                Add Destination
-              </NeoButton>
+              <span className="text-[11px] font-semibold text-neutral-500">
+                Seeded from the catalog loader
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mockDestinations.map((d) => (
+              {catalogDestinations.map((d) => (
                 <div
                   key={d.id}
                   className="p-4 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313] flex flex-col justify-between gap-2"

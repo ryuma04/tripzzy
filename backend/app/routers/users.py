@@ -1,8 +1,9 @@
 """User profile endpoints (spec sections 11, 27 /users)."""
 
 from datetime import datetime, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Query, UploadFile
 
 from app.core import responses
 from app.core.deps import CurrentUser, DbSession
@@ -18,6 +19,46 @@ from app.schemas.user import (
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/search", summary="Find other travellers to add to a split")
+async def search_users(
+    current_user: CurrentUser,
+    db: DbSession,
+    q: Annotated[str, Query(min_length=2, max_length=100)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+):
+    """Look up people by name, or by their exact email address.
+
+    Needed so a bill split can include real accounts; the frontend previously
+    searched a hardcoded list of fictional users, so only invented people
+    could be added.
+
+    This is a user directory, so it is deliberately narrow. Names match on a
+    prefix rather than a substring, and email matches only on the *whole*
+    address -- enough to find somebody you already know, not enough to
+    enumerate the user base or harvest addresses. The response carries no
+    email or phone number for the same reason, and the caller is excluded
+    from their own results.
+    """
+    term = q.strip()
+    users = await UserRepository(db).search_directory(
+        term, exclude_user_id=current_user.id, limit=limit
+    )
+    return responses.success(
+        [
+            {
+                "id": u.id,
+                "first_name": u.first_name,
+                "last_name": u.last_name,
+                "city": u.city,
+                "country": u.country,
+                "avatar_url": u.avatar_url,
+            }
+            for u in users
+        ],
+        "Users found",
+    )
 
 
 @router.get("/me", summary="View your profile")
@@ -65,9 +106,14 @@ async def update_preferences(
 ):
     prefs = await UserRepository(db).ensure_preferences(current_user)
 
+    # Every JSONB list column: these hold enum members before this point, and
+    # psycopg cannot serialise an Enum into JSONB. `preferred_transport_modes`
+    # needs the same unwrapping `preferred_categories` already had.
+    ENUM_LISTS = {"preferred_categories", "preferred_transport_modes"}
+
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
-        if field == "preferred_categories" and value is not None:
+        if field in ENUM_LISTS and value is not None:
             # Store plain strings so the JSONB column stays queryable.
             value = [c.value if hasattr(c, "value") else str(c) for c in value]
         setattr(prefs, field, value)

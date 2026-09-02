@@ -1,7 +1,7 @@
 """Shared FastAPI dependencies: current user, admin guard, pagination."""
 
 import uuid
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -13,6 +13,9 @@ from app.core.security import decode_token
 from app.db.session import get_db
 from app.models import RevokedToken, User
 from app.models.enums import UserStatus
+
+if TYPE_CHECKING:  # avoids a circular import at runtime
+    from app.models import OperatorMember
 
 # auto_error=False so a missing header raises our enveloped 401 rather than
 # FastAPI's default {"detail": ...} shape.
@@ -73,6 +76,60 @@ async def require_admin(current_user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(require_admin)]
+
+
+async def require_operator_member(
+    current_user: CurrentUser, db: DbSession
+) -> "OperatorMember":
+    """Resolve the caller's standing at a tour operator, or refuse.
+
+    Operator access is granted by *membership*, not by the platform-level
+    ``UserRole``. The same account is routinely a traveller on its own trips
+    and a coordinator at work, and collapsing those into one role would force
+    a choice between the two. It also means operator access is revoked by
+    deactivating a membership row, with no enum migration involved.
+
+    A user belonging to more than one operator resolves to their first active
+    membership; multi-operator switching is not a case the console handles yet.
+    """
+    from app.models import OperatorMember  # noqa: PLC0415
+
+    membership = await db.scalar(
+        select(OperatorMember)
+        .where(
+            OperatorMember.user_id == current_user.id,
+            OperatorMember.is_active.is_(True),
+        )
+        .order_by(OperatorMember.created_at)
+        .limit(1)
+    )
+    if membership is None:
+        raise ForbiddenError(
+            "This area is for tour operator staff. Your account is not "
+            "linked to an operator."
+        )
+    return membership
+
+
+OperatorContext = Annotated["OperatorMember", Depends(require_operator_member)]
+
+
+async def require_operator_manager(
+    membership: OperatorContext,
+) -> "OperatorMember":
+    """Narrower guard for actions a coordinator should not take alone.
+
+    Coordinators run departures; changing the roster or the vendor book is a
+    manager's job.
+    """
+    from app.models.enums import OperatorRole  # noqa: PLC0415
+
+    if membership.role not in (OperatorRole.OWNER, OperatorRole.MANAGER):
+        raise ForbiddenError("This action requires an operator manager or owner")
+    return membership
+
+
+OperatorManager = Annotated["OperatorMember", Depends(require_operator_manager)]
 
 
 async def get_optional_user(

@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════
 
 import { apiClient } from "@/lib/api";
+import { DEMO_MODE, noteDemoFallback } from "@/lib/demo-mode";
 import type {
   Trip,
   CreateTripPayload,
@@ -66,22 +67,32 @@ export const tripService = {
     traveller_count: number;
     destination_names?: string[];
   }): Promise<{ success: boolean; data?: any; message?: string }> => {
-    try {
-      const res = await apiClient.post<any>("/trips/generate-options", {
-        destination_ids: payload.destination_ids,
-        start_date: payload.start_date,
-        end_date: payload.end_date,
-        budget_tier: payload.budget_tier,
-        travel_style: payload.travel_style,
-        traveller_count: payload.traveller_count,
-      });
-      if (res.success && res.data?.budget_plan && res.data?.premium_plan) {
-        return res;
-      }
-    } catch (err) {
-      console.info("[Tripzyy Dev] Real AI API unavailable -> using demo AI provider fallback:", err);
+    // Note: apiClient never throws -- transport failures come back as an
+    // error envelope with code NETWORK_ERROR. The try/catch that used to wrap
+    // this was dead code, and the fallback below ran on *any* unexpected
+    // shape, which is how a failing backend still produced a convincing
+    // two-plan result.
+    const res = await apiClient.post<any>("/trips/generate-options", {
+      destination_ids: payload.destination_ids,
+      start_date: payload.start_date,
+      end_date: payload.end_date,
+      budget_tier: payload.budget_tier,
+      travel_style: payload.travel_style,
+      traveller_count: payload.traveller_count,
+    });
+    if (res.success && res.data?.budget_plan && res.data?.premium_plan) {
+      return res;
     }
-    // Fallback to structured demo AI provider
+
+    if (!DEMO_MODE) {
+      return {
+        success: false,
+        message:
+          res.message || "The AI planner is unavailable. Please try again.",
+      };
+    }
+
+    noteDemoFallback("AI plan generation", res.message);
     const { getDemoAIPlans } = await import("@/lib/demo-data");
     const demoPlans = getDemoAIPlans(
       payload.destination_names || ["Goa"],
@@ -93,7 +104,7 @@ export const tripService = {
     return {
       success: true,
       data: demoPlans,
-      message: "Generated 2 tailored travel plans",
+      message: "Generated 2 tailored travel plans (demo mode)",
     };
   },
 
@@ -104,16 +115,25 @@ export const tripService = {
     end_date?: string;
     traveller_count?: number;
   }) => {
-    try {
-      const res = await apiClient.post<Trip>("/trips/select-plan", payload);
-      if (res.success && res.data) {
-        return res;
-      }
-    } catch (err) {
-      console.info("[Tripzyy Dev] Real backend select-plan unavailable -> persisting to local demo trip:", err);
+    const res = await apiClient.post<Trip>("/trips/select-plan", payload);
+    if (res.success && res.data) {
+      return res;
     }
-    // Fallback if backend is unreachable
-    const { DEMO_TRIPS } = await import("@/lib/demo-data");
+
+    // Outside demo mode this must surface as a failure. The fallback below
+    // builds a trip object in memory and reports "created successfully",
+    // but nothing is written to the database -- the traveller is told their
+    // itinerary was saved and finds it gone on the next page load.
+    if (!DEMO_MODE) {
+      return {
+        success: false,
+        message: res.message || "Could not save the selected plan.",
+        data: null,
+        error: res.error,
+      };
+    }
+
+    noteDemoFallback("select-plan (nothing was persisted)", res.message);
     const plan = payload.selected_plan;
     const fallbackTrip: Trip = {
       id: `trip_ai_${Date.now()}`,

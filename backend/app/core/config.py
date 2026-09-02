@@ -122,7 +122,20 @@ class Settings(BaseSettings):
 
     @property
     def database_url_str(self) -> str:
-        return str(self.DATABASE_URL)
+        """The connection URL, forced onto settings a PgBouncer pooler tolerates.
+
+        The database is Neon, reached through its ``-pooler`` (PgBouncer)
+        endpoint. SQLAlchemy's asyncpg dialect keeps a prepared-statement
+        cache whose handles do not survive PgBouncer handing the connection
+        to a different backend between transactions, so it has to be off.
+        Unlike asyncpg's own ``statement_cache_size`` -- which is a connect
+        argument -- this one is only settable through the URL query string,
+        and it is appended here so Alembic and the app agree on it.
+        """
+        url = str(self.DATABASE_URL)
+        if "prepared_statement_cache_size" in url:
+            return url
+        return f"{url}{'&' if '?' in url else '?'}prepared_statement_cache_size=0"
 
 
 @lru_cache

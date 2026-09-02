@@ -24,11 +24,11 @@
 | **Framework** | [FastAPI](https://fastapi.tiangolo.com/) | High-performance Python async web framework |
 | **Database** | [PostgreSQL 18](https://www.postgresql.org/) + [SQLAlchemy 2.0](https://www.sqlalchemy.org/) | Async ORM via `asyncpg` engine |
 | **Migrations** | [Alembic](https://alembic.sqlalchemy.org/) | Schema migration management |
-| **AI Integration** | [Groq API](https://groq.com/) | `llama-3.3-70b-versatile` for trip generation |
+| **AI Integration** | [Groq API](https://groq.com/) | `openai/gpt-oss-120b` for trip generation (configurable via `GROQ_MODEL`) |
 | **Validation** | [Pydantic v2](https://docs.pydantic.dev/) | Request/response data models & settings |
 | **Security** | [PyJWT](https://pyjwt.readthedocs.io/) + [Passlib](https://passlib.readthedocs.io/) | Bcrypt password hashing & JWT token revocation |
 | **Email/OTP** | `aiosmtplib` / Google Apps Script | Asynchronous email dispatch for OTP codes |
-| **Testing** | [Pytest](https://docs.pytest.org/) + `pytest-asyncio` | Full suite with 250+ unit and integration tests |
+| **Testing** | [Pytest](https://docs.pytest.org/) + `pytest-asyncio` | 219 unit and integration tests |
 
 ### **Frontend**
 | Component | Technology | Description |
@@ -51,7 +51,7 @@ Tripzyy/
 │   ├── app/
 │   │   ├── core/             # Configuration, security, dependencies, exception handlers
 │   │   ├── db/               # Async database engine & session manager
-│   │   ├── models/           # SQLAlchemy database models (13 tables)
+│   │   ├── models/           # SQLAlchemy database models (16 tables)
 │   │   ├── schemas/          # Pydantic schemas for request/response validation
 │   │   ├── repositories/     # Data access layer & queries
 │   │   ├── services/         # Business logic (AI, Email, Itinerary, Trips, Community)
@@ -82,7 +82,8 @@ Tripzyy/
 
 - **Python**: `3.12+`
 - **Node.js**: `v20+` (npm `v10+`)
-- **PostgreSQL**: `v18+` (running on `localhost:5432`)
+- **PostgreSQL**: a hosted Neon database (`v18`). There is no local server to
+  install — take the connection string from the Neon console.
 
 ---
 
@@ -119,12 +120,13 @@ Tripzyy/
    ```bash
    python -c "import secrets; print(secrets.token_urlsafe(48))"
    ```
-   Update `.env` with your PostgreSQL password and generated `SECRET_KEY`.
+   Set `DATABASE_URL` to your Neon connection string (swap the driver prefix
+   to `postgresql+asyncpg://`) and paste in the generated `SECRET_KEY`.
 
-5. **Initialize Database & Apply Schema**:
-   Ensure PostgreSQL is running, then create the database and run migrations:
+5. **Apply the schema**:
+   The database already exists on Neon, so there is no `createdb` step — just
+   bring it up to the latest revision:
    ```bash
-   createdb -U postgres tripzyy
    python -m alembic upgrade head
    ```
 
@@ -214,12 +216,9 @@ All API endpoints return responses encapsulated in a unified envelope:
 
 ### Backend Unit & Integration Tests
 
-Create a dedicated test database before running tests:
-```bash
-createdb -U postgres tripzyy_test
-```
-
-Run the complete test suite:
+The suite creates its own `tripzyy_test` **schema** inside the same Neon
+database, drops it again on the way out, and connects through Neon's direct
+(non-pooled) endpoint. Nothing to provision:
 ```bash
 cd backend
 python -m pytest

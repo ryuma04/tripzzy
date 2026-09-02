@@ -88,8 +88,10 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const res = await login(email, password, selectedRole);
-      if (res && res.success) {
-        if (selectedRole === "admin" || email.toLowerCase().includes("admin")) {
+      if (res.success && res.data) {
+        // Route on the role the server actually issued, not on what was
+        // picked in the form or on the email containing "admin".
+        if (res.data.user?.role === "admin") {
           showToast("Signed in as Admin Commander! Opening Admin Panel...", "success");
           router.push("/admin");
         } else {
@@ -97,7 +99,7 @@ export default function LoginPage() {
           router.push("/dashboard");
         }
       } else {
-        showToast(res?.message || "Invalid credentials. Please verify.", "error");
+        showToast(res.message || "Invalid credentials. Please verify.", "error");
       }
     } catch (err: any) {
       showToast(
@@ -118,9 +120,9 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const res = await loginWithOtp(email, otp, selectedRole);
-      if (res && res.success) {
-        if (selectedRole === "admin" || email.toLowerCase().includes("admin")) {
+      const res = await loginWithOtp(email, otp);
+      if (res.success && res.data) {
+        if (res.data.user?.role === "admin") {
           showToast("OTP verified! Welcome back, Admin.", "success");
           router.push("/admin");
         } else {
@@ -128,7 +130,7 @@ export default function LoginPage() {
           router.push("/dashboard");
         }
       } else {
-        showToast(res?.message || "Invalid verification code.", "error");
+        showToast(res.message || "Invalid verification code.", "error");
       }
     } catch (err: any) {
       showToast("Invalid verification code. Please try again.", "error");

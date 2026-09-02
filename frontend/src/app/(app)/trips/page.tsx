@@ -10,12 +10,15 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { NeoButton } from "@/components/ui/neo-button";
 import { TripCard } from "@/components/trips/trip-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { tripService } from "@/services/trips";
 import { generateTripReportPDF } from "@/lib/report-generator";
 import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
-import type { Trip, TripStatus } from "@/types";
+import { DEMO_MODE, noteDemoFallback } from "@/lib/demo-mode";
+import { unwrapItems } from "@/lib/api";
+import type { Trip, TripStatus, Expense } from "@/types";
 
 export default function TripsPage() {
   const { showToast } = useToast();
@@ -26,23 +29,32 @@ export default function TripsPage() {
   const [sortBy, setSortBy] = useState("newest");
   const [selectedShareTrip, setSelectedShareTrip] = useState<Trip | null>(null);
   const [hasCopied, setHasCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadTrips() {
       setIsLoading(true);
       try {
         const res = await tripService.list({ limit: 50 });
-        if (res.success && res.data) {
-          const items = Array.isArray(res.data)
-            ? res.data
-            : (res.data as any).items || [];
-          setTrips(items.length > 0 ? items : DEMO_TRIPS);
-        } else {
+        if (res.success) {
+          const items = unwrapItems<Trip>(res.data);
+          // Zero trips is a legitimate state for a new account; only stand in
+          // for it when demo mode is explicitly on.
+          setTrips(items.length === 0 && DEMO_MODE ? DEMO_TRIPS : items);
+        } else if (DEMO_MODE) {
+          noteDemoFallback("trips list", res.message);
           setTrips(DEMO_TRIPS);
+        } else {
+          setError(res.message || "Could not load your trips.");
         }
       } catch (err) {
-        console.error("Failed to load trips, using demo dataset:", err);
-        setTrips(DEMO_TRIPS);
+        if (DEMO_MODE) {
+          noteDemoFallback("trips list", err);
+          setTrips(DEMO_TRIPS);
+        } else {
+          console.error("Failed to load trips:", err);
+          setError("Could not reach the Tripzyy API.");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -112,10 +124,21 @@ export default function TripsPage() {
     setTimeout(() => setHasCopied(false), 3000);
   };
 
-  const handleDownloadReport = (trip: Trip) => {
+  const handleDownloadReport = async (trip: Trip) => {
     try {
       showToast(`Generating ${trip.title} travel dossier PDF...`, "info");
-      const expenses = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
+      // Fetch the trip's real expenses. This previously always used the demo
+      // dataset, so a genuine trip's report was printed with somebody else's
+      // Goa receipts on it.
+      let expenses: Expense[] = [];
+      const res = await tripService.getExpenses(trip.id);
+      if (res.success) {
+        expenses = unwrapItems<Expense>(res.data);
+      }
+      if (expenses.length === 0 && DEMO_MODE) {
+        noteDemoFallback(`expenses for ${trip.id}`);
+        expenses = DEMO_TRIP_EXPENSES[trip.id] || [];
+      }
       generateTripReportPDF({ trip, expenses });
       showToast("Trip Report PDF downloaded successfully!", "success");
     } catch (err) {
@@ -169,7 +192,13 @@ export default function TripsPage() {
       </div>
 
       {/* Trip Cards Grid */}
-      {sortedTrips.length > 0 ? (
+      {error && !isLoading ? (
+        <ErrorState
+          title="Could not load your trips"
+          message={error}
+          onRetry={() => window.location.reload()}
+        />
+      ) : sortedTrips.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sortedTrips.map((trip) => (
             <TripCard

@@ -18,43 +18,50 @@ import { NeoButton } from "@/components/ui/neo-button";
 import { Avatar } from "@/components/ui/avatar";
 import { getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
-import { getNotifications } from "@/lib/demo-data";
+import { notificationService } from "@/services/notifications";
 import type { User, TripzyyNotification } from "@/types";
 
 export const TopBar: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname() || "";
-  const { user, isAdmin, setRole } = useAuthUser();
+  const { user, isAdmin } = useAuthUser();
   const { showToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<TripzyyNotification[]>([]);
 
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetched from the API. These used to come out of localStorage, which meant
+  // they were per-browser and only ever visible to whoever created them.
   useEffect(() => {
-    setNotifications(getNotifications());
+    if (!showNotifications) return;
+    let cancelled = false;
+    (async () => {
+      const res = await notificationService.list({ limit: 10 });
+      if (cancelled || !res.success || !res.data) return;
+      setNotifications(res.data.items);
+      setUnreadCount(res.data.unread_count);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [showNotifications]);
+
+  const handleMarkRead = async (id: string) => {
+    const res = await notificationService.markRead(id);
+    if (!res.success) return;
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    );
+    setUnreadCount((c) => Math.max(0, c - 1));
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
-
-  const handleToggleRole = () => {
-    const newRole = isAdmin ? "user" : "admin";
-    setRole(newRole);
-    if (newRole === "admin") {
-      showToast("Switched to Admin Commander perspective!", "success");
-      if (!pathname.startsWith("/admin")) {
-        router.push("/admin");
-      }
-    } else {
-      showToast("Switched to Explorer User perspective!", "info");
-      if (pathname.startsWith("/admin")) {
-        router.push("/dashboard");
-      }
     }
   };
 
@@ -79,30 +86,18 @@ export const TopBar: React.FC = () => {
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 sm:gap-4 ml-auto">
-        {/* Quick Role Switcher Pill */}
-        <button
-          type="button"
-          onClick={handleToggleRole}
-          title={`Click to switch to ${isAdmin ? "User" : "Admin"} mode`}
-          className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer ${
-            isAdmin
-              ? "bg-[#E51919] text-white"
-              : "bg-[#FFFFFF] text-[#171313] hover:bg-[#FAECDC]"
-          }`}
-        >
-          {isAdmin ? (
-            <>
-              <Shield className="w-3.5 h-3.5 fill-white" />
-              <span>Admin Mode</span>
-            </>
-          ) : (
-            <>
-              <Compass className="w-3.5 h-3.5 text-[#E51919]" />
-              <span>User Mode</span>
-            </>
-          )}
-          <ArrowRightLeft className="w-3 h-3 opacity-70 ml-1" />
-        </button>
+        {/* Role indicator. Read-only: the role comes from the server on the
+            access token. This used to be a button that flipped it in
+            localStorage, which was a one-click self-promotion to admin. */}
+        {isAdmin && (
+          <span
+            title="Signed in as an administrator"
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#E51919] text-white"
+          >
+            <Shield className="w-3.5 h-3.5 fill-white" />
+            <span>Admin</span>
+          </span>
+        )}
 
         {/* Quick Create Trip Button (for users only) */}
         {!isAdmin && (
@@ -126,9 +121,11 @@ export const TopBar: React.FC = () => {
             title="Notifications"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#E51919] border border-[#171313] rounded-full text-[9px] font-extrabold text-white flex items-center justify-center">
-              3
-            </span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#E51919] border border-[#171313] rounded-full text-[9px] font-extrabold text-white flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
 
           {showNotifications && (
@@ -138,14 +135,25 @@ export const TopBar: React.FC = () => {
                   Notifications &amp; Splits
                 </span>
                 <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-[#E51919] text-white border border-[#171313]">
-                  {notifications.filter((n) => !n.read).length || notifications.length} Updates
+                  {unreadCount} unread
                 </span>
               </div>
               <div className="flex flex-col gap-2.5">
+                {notifications.length === 0 && (
+                  <p className="text-[11px] font-semibold text-neutral-500 py-4 text-center">
+                    Nothing new right now.
+                  </p>
+                )}
                 {notifications.map((n) => (
-                  <div
+                  <button
                     key={n.id}
-                    className="p-2.5 bg-[#FAF7F2] border border-[#171313] rounded-xl flex items-start gap-2.5 hover:bg-[#F3ECE2] transition-colors"
+                    type="button"
+                    onClick={() => !n.is_read && handleMarkRead(n.id)}
+                    className={`w-full text-left p-2.5 border border-[#171313] rounded-xl flex items-start gap-2.5 transition-colors ${
+                      n.is_read
+                        ? "bg-[#FAF7F2] hover:bg-[#F3ECE2]"
+                        : "bg-[#FFF4E6] hover:bg-[#FAECDC]"
+                    }`}
                   >
                     <div className="p-1.5 bg-[#FFFFFF] rounded-lg border border-[#171313] flex-shrink-0 mt-0.5">
                       {n.type === "bill_split" ? (
@@ -159,20 +167,21 @@ export const TopBar: React.FC = () => {
                         <span className="font-display font-bold text-xs text-[#171313] truncate">
                           {n.title}
                         </span>
-                        {n.action_label && (
-                          <span className="text-[9px] font-black uppercase px-1 rounded bg-[#B7F4D8] border border-[#171313] text-[#107038] flex-shrink-0">
-                            {n.action_label}
-                          </span>
+                        {!n.is_read && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#E51919] flex-shrink-0" />
                         )}
                       </div>
                       <div className="text-[11px] text-neutral-600 font-medium leading-tight mt-0.5">
-                        {n.message}
+                        {n.body}
                       </div>
                       <div className="text-[9px] font-bold text-neutral-400 mt-1">
-                        {n.created_at}
+                        {new Date(n.created_at).toLocaleString("en-IN", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -53,6 +53,45 @@ class UserRepository:
         self.db.add(prefs)
         await self.db.flush()
         return prefs
+
+    async def search_directory(
+        self,
+        term: str,
+        *,
+        exclude_user_id: uuid.UUID | None = None,
+        limit: int = 10,
+    ) -> list[User]:
+        """Find active users by name prefix, or by exact email.
+
+        Distinct from ``list_paginated``, which is the admin listing and
+        matches names *and* emails on a substring. This one is reachable by
+        any signed-in user, so the matching is tightened: a name matches from
+        the start of the first or last name, and an email has to be given in
+        full. That is enough to find a travel companion without letting
+        anyone page through the user base or confirm addresses by fragment.
+        """
+        cleaned = term.strip().lower().lstrip("@")
+        if not cleaned:
+            return []
+
+        prefix = f"{cleaned}%"
+        conditions = [
+            func.lower(User.first_name).like(prefix),
+            func.lower(User.last_name).like(prefix),
+            func.lower(User.email) == cleaned,
+        ]
+
+        stmt = (
+            select(User)
+            .where(or_(*conditions))
+            .where(User.status == UserStatus.ACTIVE)
+            .order_by(User.first_name, User.last_name)
+            .limit(limit)
+        )
+        if exclude_user_id is not None:
+            stmt = stmt.where(User.id != exclude_user_id)
+
+        return list((await self.db.execute(stmt)).scalars().all())
 
     async def list_paginated(
         self,

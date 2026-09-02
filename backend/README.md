@@ -2,14 +2,19 @@
 
 FastAPI + PostgreSQL + SQLAlchemy + Alembic + JWT.
 
-Implements the full API described in `docs/IMPLEMENTATION_PLAN.md`, derived
-from `Tripzyy_MASTER_SPEC.md`. **250 tests, 68 endpoints, 13 tables.**
+**219 tests, 89 endpoints, 16 tables.**
+
+Section references in the comments (`spec section 14`, `refinement R3`) point at
+a master spec and implementation plan that were removed from the repository in
+commit `1efb309`. They are kept because they still explain *why* a rule exists,
+but the documents themselves are no longer here.
 
 ---
 
 ## Setup
 
-Requires Python 3.12 and a local PostgreSQL 18 instance.
+Requires Python 3.12. PostgreSQL is hosted on Neon — there is nothing to
+install or start locally.
 
 ```bash
 cd backend
@@ -19,17 +24,16 @@ python -m venv .venv
 ```
 
 Copy `.env.example` to `.env` and fill it in. The one value with no sensible
-default is `DATABASE_URL`; generate `SECRET_KEY` with:
+default is `DATABASE_URL` — the Neon connection string, with the driver prefix
+changed to `postgresql+asyncpg://`. Generate `SECRET_KEY` with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Create the databases and apply the schema:
+Apply the schema. The database itself already exists on Neon:
 
 ```bash
-createdb -U postgres tripzyy
-createdb -U postgres tripzyy_test      # only needed to run the tests
 python -m alembic upgrade head
 ```
 
@@ -69,9 +73,21 @@ python -m pytest                      # full suite
 python -m pytest tests/test_trips.py  # one file
 ```
 
-The suite runs against `tripzyy_test`, which it drops and rebuilds each run,
-and refuses to start against any other database. It never sends email: the
-fixtures blank the SMTP credentials regardless of what `.env` says.
+The suite creates a `tripzyy_test` **schema** inside the same Neon database,
+builds every table and enum inside it, and drops it again at the end. It never
+touches `public`, where the real data lives: SQLAlchemy is configured with a
+`schema_translate_map`, so table names are fully qualified in the emitted SQL
+rather than resolved through `search_path` — which PgBouncer silently discards.
+A guard refuses to run at all if that mapping is ever missing.
+
+Tests connect through Neon's *direct* endpoint rather than the `-pooler` one.
+Recreating the schema gives the enum types new OIDs each run, and a pooled
+backend that was introspected against the old ones fails the next insert with
+`cache lookup failed for type NNNNN`.
+
+Set `TEST_DATABASE_URL` to run against a separate instance or a Neon branch.
+The suite never sends email: the fixtures blank the SMTP credentials
+regardless of what `.env` says.
 
 End-to-end walkthrough of the spec's own "Definition of Done", against a
 running server:

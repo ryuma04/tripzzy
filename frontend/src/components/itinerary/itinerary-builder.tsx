@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   Globe2,
+  Scale,
 } from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
@@ -28,7 +29,28 @@ import { tripService } from "@/services/trips";
 import { destinationService } from "@/services/destinations";
 import { placesService, PlaceSuggestion } from "@/services/places";
 import { resolvePlaceImageUrl } from "@/lib/place-images";
-import type { Trip, TripStop, ItineraryActivity, Destination } from "@/types";
+import { CompareAlternatives } from "@/components/itinerary/compare-alternatives";
+import type {
+  Trip,
+  TripStop,
+  ItineraryActivity,
+  Destination,
+  ServiceType,
+} from "@/types";
+
+/** Nights between two ISO dates; at least one, so a day trip still prices. */
+function nightsBetween(arrival?: string, departure?: string): number {
+  if (!arrival || !departure) return 1;
+  const ms = new Date(departure).getTime() - new Date(arrival).getTime();
+  return Math.max(1, Math.round(ms / 86_400_000));
+}
+
+interface ComparisonTarget {
+  city: string;
+  serviceType: ServiceType;
+  onDate?: string;
+  nights: number;
+}
 
 interface ItineraryBuilderProps {
   trip: Trip;
@@ -41,6 +63,7 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
 }) => {
   const { showToast } = useToast();
   const [stops, setStops] = useState<TripStop[]>(trip.stops || []);
+  const [comparing, setComparing] = useState<ComparisonTarget | null>(null);
   const [availableDestinations, setAvailableDestinations] = useState<Destination[]>([]);
 
   // Modal for adding a new section/stop
@@ -385,6 +408,29 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
                       <span>Est: ₹{totalStopCost.toLocaleString("en-IN")}</span>
                     </div>
 
+                    {/* Opens the ranked alternatives for this stop. Nights
+                        come from the stop's own dates, so capacity and
+                        seasonal pricing are checked against the real stay. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setComparing({
+                          city: placeName,
+                          serviceType: "accommodation",
+                          onDate: stop.arrival_date,
+                          nights: nightsBetween(
+                            stop.arrival_date,
+                            stop.departure_date
+                          ),
+                        })
+                      }
+                      className="flex items-center gap-1.5 px-3 py-1 bg-[#FFFFFF] border border-[#171313] rounded-lg text-xs font-bold hover:bg-[#FAECDC] cursor-pointer"
+                      title="Compare stays for this stop"
+                    >
+                      <Scale className="w-3.5 h-3.5 text-[#107038]" />
+                      <span>Compare stays</span>
+                    </button>
+
                     {/* Reorder Buttons */}
                     <div className="flex items-center gap-1 ml-2">
                       <button
@@ -659,6 +705,28 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Ranked alternatives for one stop. Selection is display-only until
+          the booking layer lands -- there is nothing to persist a chosen
+          service against yet, and silently discarding the choice would be
+          worse than saying so. */}
+      <CompareAlternatives
+        isOpen={comparing !== null}
+        onClose={() => setComparing(null)}
+        serviceType={comparing?.serviceType ?? "accommodation"}
+        city={comparing?.city}
+        onDate={comparing?.onDate}
+        nights={comparing?.nights ?? 1}
+        quantity={trip.traveller_count || 1}
+        onSelect={(option) => {
+          showToast(
+            `${option.name} — ₹${Number(option.total_price).toLocaleString("en-IN")}. ` +
+              "Saving a selection needs the booking step.",
+            "info"
+          );
+          setComparing(null);
+        }}
+      />
     </div>
   );
 };

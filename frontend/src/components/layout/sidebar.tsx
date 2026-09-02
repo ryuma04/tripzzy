@@ -11,6 +11,7 @@ import {
   Users,
   Calendar as CalendarIcon,
   ShieldAlert,
+  Building2,
   User as UserIcon,
   Settings,
   LogOut,
@@ -20,6 +21,7 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
 import { logout, getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
+import { operatorService } from "@/services/operator";
 import type { User } from "@/types";
 
 interface NavItem {
@@ -73,6 +75,14 @@ const adminNavItems: NavItem[] = [
   },
 ];
 
+const operatorNavItems: NavItem[] = [
+  {
+    label: "Operations",
+    href: "/operator",
+    icon: <Building2 className="w-5 h-5" />,
+  },
+];
+
 const secondaryNavItems: NavItem[] = [
   {
     label: "Profile",
@@ -90,6 +100,24 @@ export const Sidebar: React.FC = () => {
   const pathname = usePathname() || "/dashboard";
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { user, isAdmin } = useAuthUser();
+
+  // Operator access comes from being on an operator's roster, not from the
+  // account's platform role, so it cannot be read off the stored user — it
+  // has to be asked for. A 403 here is the ordinary answer for a traveller.
+  const [isOperatorStaff, setIsOperatorStaff] = useState(false);
+  useEffect(() => {
+    if (!user) {
+      setIsOperatorStaff(false);
+      return;
+    }
+    let cancelled = false;
+    operatorService.profile().then((res) => {
+      if (!cancelled) setIsOperatorStaff(res.success);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isActive = (href: string) => {
     if (href === "/admin" && pathname.startsWith("/admin")) return true;
@@ -137,7 +165,12 @@ export const Sidebar: React.FC = () => {
 
         {/* Main Nav Links */}
         <nav className="flex flex-col gap-1.5">
-          {(isAdmin ? adminNavItems : mainNavItems).map((item) => {
+          {(isAdmin
+            ? adminNavItems
+            : isOperatorStaff
+              ? [...mainNavItems, ...operatorNavItems]
+              : mainNavItems
+          ).map((item) => {
             const active = isActive(item.href);
             return (
               <Link

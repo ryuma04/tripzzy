@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     text,
@@ -19,7 +20,13 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base_class import Base, TimestampMixin, UUIDMixin
-from app.models.enums import UserRole, UserStatus
+from app.models.enums import (
+    ComfortTier,
+    TravelPace,
+    TravelStyle,
+    UserRole,
+    UserStatus,
+)
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -112,6 +119,64 @@ class UserPreference(UUIDMixin, TimestampMixin, Base):
         Boolean, nullable=False, default=True, server_default=text("true")
     )
 
+    # --- Personalisation intake ---
+    # These are what let the platform compose a tour around one traveller
+    # instead of selling them a fixed package. They are also the inputs the
+    # adaptation engine scores replacement options against, so a suggested
+    # alternative respects the same preferences the original choice did.
+    #
+    # All nullable: a traveller who has not told us is different from one who
+    # has no preference, and defaulting would silently invent an answer.
+    travel_style: Mapped[TravelStyle | None] = mapped_column(
+        SAEnum(
+            TravelStyle,
+            name="travel_style",
+            values_callable=lambda e: [m.value for m in e],
+        )
+    )
+    pace: Mapped[TravelPace | None] = mapped_column(
+        SAEnum(
+            TravelPace,
+            name="travel_pace",
+            values_callable=lambda e: [m.value for m in e],
+        )
+    )
+    accommodation_class: Mapped[ComfortTier | None] = mapped_column(
+        SAEnum(
+            ComfortTier,
+            name="comfort_tier",
+            values_callable=lambda e: [m.value for m in e],
+        )
+    )
+    transport_class: Mapped[ComfortTier | None] = mapped_column(
+        SAEnum(
+            ComfortTier,
+            name="comfort_tier",
+            values_callable=lambda e: [m.value for m in e],
+            create_type=False,
+        )
+    )
+    # Preferred transport modes, most-preferred first, as TransportType
+    # values. Order carries meaning, so this is a list rather than a set.
+    preferred_transport_modes: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    # Free-form interest tags beyond the fixed activity categories --
+    # "street food", "birdwatching". Kept open so personalisation is not
+    # capped by the catalog's taxonomy.
+    interests: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    dietary_requirements: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    # Accessibility needs. Read during adaptation: a replacement that a
+    # traveller cannot physically use is not a valid alternative.
+    mobility_needs: Mapped[str | None] = mapped_column(Text)
+    # Per-day ceiling, distinct from a trip's total budget. Used to flag a
+    # plan that fits overall but front-loads spending into a few days.
+    daily_budget_cap: Mapped[float | None] = mapped_column(Numeric(12, 2))
+
     user: Mapped["User"] = relationship(back_populates="preferences")
 
     __table_args__ = (
@@ -119,6 +184,10 @@ class UserPreference(UUIDMixin, TimestampMixin, Base):
             "default_traveller_count >= 1", name="default_traveller_count_positive"
         ),
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency_iso4217"),
+        CheckConstraint(
+            "daily_budget_cap IS NULL OR daily_budget_cap >= 0",
+            name="daily_budget_cap_non_negative",
+        ),
     )
 
 

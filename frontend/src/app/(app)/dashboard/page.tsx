@@ -23,12 +23,15 @@ import { NeoButton } from "@/components/ui/neo-button";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { SearchBar } from "@/components/ui/search-bar";
+import { ErrorState } from "@/components/ui/error-state";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { tripService } from "@/services/trips";
 import { destinationService } from "@/services/destinations";
 import { getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
 import { DEMO_TRIPS, DEMO_DESTINATIONS } from "@/lib/demo-data";
+import { DEMO_MODE, noteDemoFallback } from "@/lib/demo-mode";
+import { unwrapItems } from "@/lib/api";
 import type { Trip, Destination, User } from "@/types";
 
 export default function DashboardPage() {
@@ -38,11 +41,12 @@ export default function DashboardPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
 
-  useEffect(() => {
-    async function loadDashboardData() {
+  const loadDashboardData = React.useCallback(async () => {
       setIsLoading(true);
+      setError(null);
       try {
         const [tripsRes, destsRes, userRes] = await Promise.all([
           tripService.list({ limit: 20 }),
@@ -54,34 +58,44 @@ export default function DashboardPage() {
           updateUser(userRes.data);
         }
 
-        if (tripsRes.success && tripsRes.data) {
-          const items = Array.isArray(tripsRes.data)
-            ? tripsRes.data
-            : (tripsRes.data as any).items || [];
-          setTrips(items.length > 0 ? items : DEMO_TRIPS);
-        } else {
+        if (tripsRes.success) {
+          const items = unwrapItems<Trip>(tripsRes.data);
+          // An account with no trips is a real, expected state -- show the
+          // empty state rather than pretending it has a Goa itinerary.
+          setTrips(items.length === 0 && DEMO_MODE ? DEMO_TRIPS : items);
+        } else if (DEMO_MODE) {
+          noteDemoFallback("trips list", tripsRes.message);
           setTrips(DEMO_TRIPS);
+        } else {
+          setError(tripsRes.message || "Could not load your trips.");
         }
 
-        if (destsRes.success && destsRes.data) {
-          const items = Array.isArray(destsRes.data)
-            ? destsRes.data
-            : (destsRes.data as any).items || [];
-          setDestinations(items.length > 0 ? items : DEMO_DESTINATIONS);
-        } else {
+        if (destsRes.success) {
+          const items = unwrapItems<Destination>(destsRes.data);
+          setDestinations(
+            items.length === 0 && DEMO_MODE ? DEMO_DESTINATIONS : items
+          );
+        } else if (DEMO_MODE) {
+          noteDemoFallback("destinations", destsRes.message);
           setDestinations(DEMO_DESTINATIONS);
         }
       } catch (err) {
-        console.error("Failed to load dashboard data, using demo store:", err);
-        setTrips(DEMO_TRIPS);
-        setDestinations(DEMO_DESTINATIONS);
+        if (DEMO_MODE) {
+          noteDemoFallback("dashboard", err);
+          setTrips(DEMO_TRIPS);
+          setDestinations(DEMO_DESTINATIONS);
+        } else {
+          console.error("Failed to load dashboard data:", err);
+          setError("Could not reach the Tripzyy API.");
+        }
       } finally {
         setIsLoading(false);
       }
-    }
+  }, [updateUser]);
 
+  useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
 
   const activeTrip =
     trips.find((t) => t.status === "ongoing") ||
@@ -103,6 +117,18 @@ export default function DashboardPage() {
       router.push(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
+
+  if (error && !isLoading) {
+    return (
+      <div className="py-12">
+        <ErrorState
+          title="Could not load your dashboard"
+          message={error}
+          onRetry={loadDashboardData}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8 pb-12">

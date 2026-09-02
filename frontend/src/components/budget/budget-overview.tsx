@@ -22,6 +22,8 @@ import { useToast } from "@/components/ui/toast";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { tripService } from "@/services/trips";
 import { DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
+import { DEMO_MODE, noteDemoFallback } from "@/lib/demo-mode";
+import { unwrapItems } from "@/lib/api";
 import type { Trip, Expense, ExpenseCategory } from "@/types";
 
 interface BudgetOverviewProps {
@@ -47,17 +49,26 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
       setIsLoading(true);
       try {
         const res = await tripService.getExpenses(trip.id);
-        if (res.success && res.data && res.data.length > 0) {
-          setExpenses(res.data);
+        if (res.success) {
+          const items = unwrapItems<Expense>(res.data);
+          // A trip with nothing recorded yet genuinely has spent nothing.
+          // The old code treated that as "no data" and substituted another
+          // trip's demo receipts, so every budget showed the same Goa spend
+          // and "remaining" was wrong on every trip but that one.
+          setExpenses(
+            items.length === 0 && DEMO_MODE
+              ? DEMO_TRIP_EXPENSES[trip.id] || []
+              : items
+          );
+        } else if (DEMO_MODE) {
+          noteDemoFallback(`expenses for ${trip.id}`, res.message);
+          setExpenses(DEMO_TRIP_EXPENSES[trip.id] || []);
         } else {
-          // Fallback to realistic demo expenses for this trip
-          const demoExps = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
-          setExpenses(demoExps);
+          setExpenses([]);
         }
       } catch (err) {
-        console.error("Failed to load expenses, using demo dataset:", err);
-        const demoExps = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
-        setExpenses(demoExps);
+        console.error("Failed to load expenses:", err);
+        setExpenses(DEMO_MODE ? DEMO_TRIP_EXPENSES[trip.id] || [] : []);
       } finally {
         setIsLoading(false);
       }

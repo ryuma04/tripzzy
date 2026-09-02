@@ -21,6 +21,7 @@ import {
   Check,
   Map as MapIcon,
   Wallet,
+  Ticket,
   Compass,
   Download,
   FileText,
@@ -36,11 +37,13 @@ import { useToast } from "@/components/ui/toast";
 import { ItineraryBuilder } from "@/components/itinerary/itinerary-builder";
 import { ItineraryView } from "@/components/itinerary/itinerary-view";
 import { BudgetOverview } from "@/components/budget/budget-overview";
+import { BookingPanel } from "@/components/booking/booking-panel";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
 import { generateTripReportPDF } from "@/lib/report-generator";
 import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
+import { DEMO_MODE, noteDemoFallback } from "@/lib/demo-mode";
 import type { Trip, Expense } from "@/types";
 
 export default function TripDetailPage() {
@@ -51,6 +54,7 @@ export default function TripDetailPage() {
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("itinerary");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -62,6 +66,7 @@ export default function TripDetailPage() {
   const tabs = [
     { id: "itinerary", label: "Itinerary & Stops", count: trip?.stops?.length || 0, icon: <Layers className="w-4 h-4" /> },
     { id: "map", label: "Interactive Route Map", icon: <MapIcon className="w-4 h-4" /> },
+    { id: "bookings", label: "Bookings & Payments", icon: <Ticket className="w-4 h-4" /> },
     { id: "budget", label: "Budget & Expenses", icon: <Wallet className="w-4 h-4" /> },
     { id: "overview", label: "Trip Summary", icon: <Compass className="w-4 h-4" /> },
   ];
@@ -74,19 +79,28 @@ export default function TripDetailPage() {
         if (res.success && res.data) {
           setTrip(res.data);
         } else {
-          // Check demo dataset fallback
-          const demoFound = DEMO_TRIPS.find((t) => t.id === tripId);
+          // Demo trips have synthetic ids that the API does not know, so a
+          // lookup here is only meaningful when demo mode is on.
+          const demoFound = DEMO_MODE
+            ? DEMO_TRIPS.find((t) => t.id === tripId)
+            : undefined;
           if (demoFound) {
+            noteDemoFallback(`trip ${tripId}`, res.message);
             setTrip(demoFound);
           } else {
-            showToast(res.message || "Failed to load trip.", "error");
+            setError(res.message || "Failed to load this trip.");
           }
         }
       } catch (err) {
-        console.error("Error loading trip detail, checking demo dataset:", err);
-        const demoFound = DEMO_TRIPS.find((t) => t.id === tripId);
+        const demoFound = DEMO_MODE
+          ? DEMO_TRIPS.find((t) => t.id === tripId)
+          : undefined;
         if (demoFound) {
+          noteDemoFallback(`trip ${tripId}`, err);
           setTrip(demoFound);
+        } else {
+          console.error("Error loading trip detail:", err);
+          setError("Could not reach the Tripzyy API.");
         }
       } finally {
         setIsLoading(false);
@@ -113,8 +127,9 @@ export default function TripDetailPage() {
         console.warn("Could not fetch remote expenses, checking demo dataset:", e);
       }
 
-      if (!expenses || expenses.length === 0) {
-        expenses = DEMO_TRIP_EXPENSES[trip.id] || DEMO_TRIP_EXPENSES["trip_demo_goa_completed"] || [];
+      if (expenses.length === 0 && DEMO_MODE) {
+        noteDemoFallback(`expenses for ${trip.id}`);
+        expenses = DEMO_TRIP_EXPENSES[trip.id] || [];
       }
 
       generateTripReportPDF({
@@ -179,7 +194,9 @@ export default function TripDetailPage() {
     return (
       <div className="p-12 text-center flex flex-col items-center gap-4">
         <h3 className="font-display font-extrabold text-xl">Trip Not Found</h3>
-        <p className="text-sm text-neutral-600">The requested itinerary could not be loaded.</p>
+        <p className="text-sm text-neutral-600">
+          {error || "The requested itinerary could not be loaded."}
+        </p>
         <Link href="/trips">
           <NeoButton variant="primary">Return to All Trips</NeoButton>
         </Link>
@@ -376,6 +393,8 @@ export default function TripDetailPage() {
         )}
 
         {activeTab === "timeline" && <ItineraryView trip={trip} />}
+
+        {activeTab === "bookings" && <BookingPanel trip={trip} />}
 
         {activeTab === "budget" && <BudgetOverview trip={trip} />}
 

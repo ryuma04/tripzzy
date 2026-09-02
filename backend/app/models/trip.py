@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -18,11 +19,11 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base_class import Base, TimestampMixin, UUIDMixin
-from app.models.enums import TripStatus
+from app.models.enums import AIPlanType, TripStatus
 
 
 class Trip(UUIDMixin, TimestampMixin, Base):
@@ -47,6 +48,26 @@ class Trip(UUIDMixin, TimestampMixin, Base):
         String(3), nullable=False, default="INR", server_default="INR"
     )
     cover_image_url: Mapped[str | None] = mapped_column(String(500))
+    # Where the traveller departs from. Needed to price the first transport
+    # leg, which is otherwise unanchored.
+    origin_city: Mapped[str | None] = mapped_column(String(100))
+
+    # --- AI provenance ---
+    # Which generated option this trip came from, and the raw plan it was
+    # built from. Keeping the original payload means a later change can be
+    # explained against what was actually proposed, rather than against the
+    # itinerary after it has been edited.
+    ai_plan_type: Mapped[AIPlanType | None] = mapped_column(
+        SAEnum(
+            AIPlanType,
+            name="ai_plan_type",
+            values_callable=lambda e: [m.value for m in e],
+        )
+    )
+    ai_plan: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # "groq" when a live model produced it, "fallback" when the built-in
+    # generator did -- so a demo can tell at a glance which path ran.
+    ai_plan_source: Mapped[str | None] = mapped_column(String(20))
 
     # Persisted for querying/filtering, but always recomputed server-side on
     # read (refinement R3) -- the client's value is never trusted.

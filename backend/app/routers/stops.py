@@ -14,7 +14,6 @@ from app.schemas.logistics import (
 from app.schemas.stop import (
     ItineraryActivityCreateRequest,
     ItineraryActivityResponse,
-    ItineraryActivityUpdateRequest,
     StopDetail,
     StopUpdateRequest,
 )

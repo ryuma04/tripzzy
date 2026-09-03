@@ -4,7 +4,6 @@ import uuid
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models import User, UserPreference
 from app.models.enums import UserRole, UserStatus
@@ -28,13 +27,6 @@ class UserRepository:
             select(User.id).where(func.lower(User.email) == email.strip().lower())
         )
         return found is not None
-
-    async def get_with_preferences(self, user_id: uuid.UUID) -> User | None:
-        return await self.db.scalar(
-            select(User)
-            .where(User.id == user_id)
-            .options(selectinload(User.preferences))
-        )
 
     async def create(self, **fields) -> User:
         user = User(**fields)

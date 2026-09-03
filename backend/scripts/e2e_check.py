@@ -72,7 +72,28 @@ def main() -> None:
     login = client.post(
         "/auth/login", json={"email": email, "password": "Str0ng!Pass"}
     )
-    check("login succeeds", login.status_code == 200, login.text)
+
+    # Both server configurations are legitimate, so the script handles both.
+    # With REQUIRE_EMAIL_VERIFICATION on, a brand-new account cannot sign in
+    # until it confirms a code that only reaches a real mailbox -- which a
+    # script does not have. That is the server behaving correctly, not a
+    # failure, so the rest of the walkthrough continues as the seeded,
+    # already-verified traveller instead.
+    if login.status_code == 403 and "verify" in login.text.lower():
+        check("unverified account is correctly refused a session", True)
+        email, password = "traveller@tripzyy.com", "Travel@123"
+        login = client.post(
+            "/auth/login", json={"email": email, "password": password}
+        )
+        check(
+            "seeded verified account signs in",
+            login.status_code == 200,
+            login.text + "  (run: python -m app.seed.seed --demo)",
+        )
+    else:
+        password = "Str0ng!Pass"
+        check("login succeeds", login.status_code == 200, login.text)
+
     token = data(login)["access_token"]
     auth = {"Authorization": f"Bearer {token}"}
     check(
@@ -310,8 +331,16 @@ def main() -> None:
     check("calendar has accommodation", "accommodation_check_in" in types)
 
     print("\n12. Trip listing and status")
-    listing = data(client.get("/trips?status=upcoming", headers=auth))
-    check("trip is now upcoming", listing["pagination"]["total"] == 1)
+    # Assert this trip is in the listing rather than that it is the only one:
+    # the account running this may already own trips, and a count assertion
+    # would be testing the fixture's history instead of the status filter.
+    listing = data(client.get("/trips?status=upcoming&limit=100", headers=auth))
+    upcoming = {t["id"] for t in listing["items"]}
+    check("trip is now upcoming", trip_id in upcoming, f"{len(upcoming)} upcoming")
+    check(
+        "the status filter excludes other statuses",
+        all(t["status"] == "upcoming" for t in listing["items"]),
+    )
 
     print("\n13. Share")
     shared = data(client.post(f"/trips/{trip_id}/share", headers=auth))
@@ -331,25 +360,20 @@ def main() -> None:
     check("trip appears in the community", community["pagination"]["total"] >= 1)
 
     print("\n15. Another user clones it")
-    other_email = f"e2eclone{stamp}@example.com"
-    client.post(
-        "/auth/register",
-        json={
-            "first_name": "Dev",
-            "last_name": "Rao",
-            "email": other_email,
-            "phone": "+919876500002",
-            "city": "Pune",
-            "country": "India",
-            "password": "Str0ng!Pass",
-            "confirm_password": "Str0ng!Pass",
-        },
+    # The seeded second traveller rather than a fresh registration, for the
+    # same reason as section 2: a new account cannot sign in while email
+    # verification is required. It also keeps this walkthrough clear of the
+    # auth rate limit, which a second register-plus-login would push into.
+    other_email, other_password = "explorer@tripzyy.com", "Explore@123"
+    other_login = client.post(
+        "/auth/login", json={"email": other_email, "password": other_password}
     )
-    other_token = data(
-        client.post(
-            "/auth/login", json={"email": other_email, "password": "Str0ng!Pass"}
-        )
-    )["access_token"]
+    check(
+        "second seeded account signs in",
+        other_login.status_code == 200,
+        other_login.text + "  (run: python -m app.seed.seed --demo)",
+    )
+    other_token = data(other_login)["access_token"]
     other_auth = {"Authorization": f"Bearer {other_token}"}
 
     clone = data(

@@ -30,7 +30,6 @@ from sqlalchemy import (
     String,
     Text,
     Time,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship

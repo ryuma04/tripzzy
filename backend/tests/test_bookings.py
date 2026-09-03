@@ -8,7 +8,6 @@ here against each kind of cancellation policy.
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession

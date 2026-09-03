@@ -577,10 +577,10 @@ async def tour(db: AsyncSession) -> dict:
     db.add_all([operator, rival_operator])
     await db.flush()
 
-    owner = await _make_user(db, "owner@coastline.test", "Owner")
-    rival = await _make_user(db, "owner@highland.test", "Rival")
-    traveller = await _make_user(db, "ada@coastline.test", "Ada")
-    bystander = await _make_user(db, "bo@coastline.test", "Bo")
+    owner = await _make_user(db, "owner@coastline.example.com", "Owner")
+    rival = await _make_user(db, "owner@highland.example.com", "Rival")
+    traveller = await _make_user(db, "ada@coastline.example.com", "Ada")
+    bystander = await _make_user(db, "bo@coastline.example.com", "Bo")
 
     db.add_all(
         [
@@ -727,7 +727,7 @@ def auth(token: str) -> dict:
 async def test_assessing_a_replacement_costs_it_from_the_catalogue(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assess-change",
         headers=auth(token),
@@ -750,7 +750,7 @@ async def test_assessing_a_replacement_costs_it_from_the_catalogue(
 
 async def test_assessing_writes_nothing(client: AsyncClient, tour, db: AsyncSession):
     """A preview that moves the tour would be a bug with a refund attached."""
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     await client.post(
         f"/trips/{tour['trip'].id}/assess-change",
         headers=auth(token),
@@ -763,7 +763,7 @@ async def test_assessing_writes_nothing(client: AsyncClient, tour, db: AsyncSess
 
 
 async def test_a_date_shift_reports_what_it_breaks(client: AsyncClient, tour):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assess-change",
         headers=auth(token),
@@ -781,7 +781,7 @@ async def test_a_date_shift_reports_what_it_breaks(client: AsyncClient, tour):
 async def test_a_replacement_with_no_choice_returns_a_shortlist(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assess-change",
         headers=auth(token),
@@ -812,7 +812,7 @@ async def test_a_blocked_date_makes_a_change_infeasible(
     row.is_blocked = True
     await db.commit()
 
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assess-change",
         headers=auth(token),
@@ -831,7 +831,7 @@ async def test_a_blocked_date_makes_a_change_infeasible(
 
 
 async def test_someone_elses_trip_cannot_be_assessed(client: AsyncClient, tour):
-    token = await token_for(client, "bo@coastline.test")
+    token = await token_for(client, "bo@coastline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assess-change",
         headers=auth(token),
@@ -860,7 +860,7 @@ async def _submit(client: AsyncClient, tour, token: str) -> dict:
 
 
 async def test_submitting_freezes_the_impact_report(client: AsyncClient, tour):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, token)
     assert request["status"] == "pending"
     assert request["impact"]["cost"]["net_delta"] == request["net_cost_delta"]
@@ -868,10 +868,10 @@ async def test_submitting_freezes_the_impact_report(client: AsyncClient, tour):
 
 
 async def test_the_request_reaches_its_operators_queue(client: AsyncClient, tour):
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
 
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
     resp = await client.get(
         "/operator/change-requests?limit=50", headers=auth(owner_token)
     )
@@ -882,10 +882,10 @@ async def test_the_request_reaches_its_operators_queue(client: AsyncClient, tour
 
 async def test_a_rival_operator_never_sees_it(client: AsyncClient, tour):
     """The security boundary: scoping comes from membership, not a parameter."""
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
 
-    rival_token = await token_for(client, "owner@highland.test")
+    rival_token = await token_for(client, "owner@highland.example.com")
     listed = await client.get(
         "/operator/change-requests?limit=50", headers=auth(rival_token)
     )
@@ -898,10 +898,10 @@ async def test_a_rival_operator_never_sees_it(client: AsyncClient, tour):
 
 
 async def test_a_rival_operator_cannot_decide_it(client: AsyncClient, tour):
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
 
-    rival_token = await token_for(client, "owner@highland.test")
+    rival_token = await token_for(client, "owner@highland.example.com")
     resp = await client.post(
         f"/operator/change-requests/{request['id']}/decision",
         headers=auth(rival_token),
@@ -911,7 +911,7 @@ async def test_a_rival_operator_cannot_decide_it(client: AsyncClient, tour):
 
 
 async def test_a_traveller_cannot_reach_the_queue(client: AsyncClient, tour):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     assert (
         await client.get("/operator/change-requests", headers=auth(token))
     ).status_code == 403
@@ -922,10 +922,10 @@ async def test_a_traveller_cannot_reach_the_queue(client: AsyncClient, tour):
 async def test_approving_applies_the_change(
     client: AsyncClient, tour, db: AsyncSession
 ):
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
 
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
     resp = await client.post(
         f"/operator/change-requests/{request['id']}/decision",
         headers=auth(owner_token),
@@ -941,9 +941,9 @@ async def test_approving_applies_the_change(
 async def test_the_superseded_component_keeps_its_audit_trail(
     client: AsyncClient, tour
 ):
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
     decided = (
         await client.post(
             f"/operator/change-requests/{request['id']}/decision",
@@ -968,11 +968,11 @@ async def test_a_cheaper_replacement_refunds_the_difference(
     client: AsyncClient, tour
 ):
     """6000 back, 4500 spent on the budget room: 1500 net to the traveller."""
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
     assert request["net_cost_delta"] == "-1500.00"
 
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
     await client.post(
         f"/operator/change-requests/{request['id']}/decision",
         headers=auth(owner_token),
@@ -989,10 +989,10 @@ async def test_a_cheaper_replacement_refunds_the_difference(
 
 
 async def test_rejecting_changes_nothing(client: AsyncClient, tour, db: AsyncSession):
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
 
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
     resp = await client.post(
         f"/operator/change-requests/{request['id']}/decision",
         headers=auth(owner_token),
@@ -1005,9 +1005,9 @@ async def test_rejecting_changes_nothing(client: AsyncClient, tour, db: AsyncSes
 
 
 async def test_a_decided_request_cannot_be_decided_again(client: AsyncClient, tour):
-    traveller_token = await token_for(client, "ada@coastline.test")
+    traveller_token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, traveller_token)
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
 
     await client.post(
         f"/operator/change-requests/{request['id']}/decision",
@@ -1023,7 +1023,7 @@ async def test_a_decided_request_cannot_be_decided_again(client: AsyncClient, to
 
 
 async def test_a_traveller_can_withdraw_a_pending_request(client: AsyncClient, tour):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, token)
     resp = await client.delete(
         f"/change-requests/{request['id']}", headers=auth(token)
@@ -1032,10 +1032,10 @@ async def test_a_traveller_can_withdraw_a_pending_request(client: AsyncClient, t
 
 
 async def test_someone_elses_request_is_not_readable(client: AsyncClient, tour):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     request = await _submit(client, tour, token)
 
-    other = await token_for(client, "bo@coastline.test")
+    other = await token_for(client, "bo@coastline.example.com")
     assert (
         await client.get(f"/change-requests/{request['id']}", headers=auth(other))
     ).status_code == 403
@@ -1044,7 +1044,7 @@ async def test_someone_elses_request_is_not_readable(client: AsyncClient, tour):
 # -- disruptions -----------------------------------------------------------
 
 async def test_a_disruption_costs_its_own_blast_radius(client: AsyncClient, tour):
-    token = await token_for(client, "owner@coastline.test")
+    token = await token_for(client, "owner@coastline.example.com")
     resp = await client.post(
         "/operator/disruptions",
         headers=auth(token),
@@ -1068,7 +1068,7 @@ async def test_a_disruption_costs_its_own_blast_radius(client: AsyncClient, tour
 
 async def test_a_disruption_must_be_scoped(client: AsyncClient, tour):
     """Unscoped, it would catch the operator's entire book."""
-    token = await token_for(client, "owner@coastline.test")
+    token = await token_for(client, "owner@coastline.example.com")
     resp = await client.post(
         "/operator/disruptions",
         headers=auth(token),
@@ -1078,7 +1078,7 @@ async def test_a_disruption_must_be_scoped(client: AsyncClient, tour):
 
 
 async def test_a_rival_operators_incident_is_invisible(client: AsyncClient, tour):
-    owner_token = await token_for(client, "owner@coastline.test")
+    owner_token = await token_for(client, "owner@coastline.example.com")
     created = (
         await client.post(
             "/operator/disruptions",
@@ -1092,7 +1092,7 @@ async def test_a_rival_operators_incident_is_invisible(client: AsyncClient, tour
         )
     ).json()["data"]
 
-    rival_token = await token_for(client, "owner@highland.test")
+    rival_token = await token_for(client, "owner@highland.example.com")
     assert (
         await client.get(
             f"/operator/disruptions/{created['id']}", headers=auth(rival_token)
@@ -1110,7 +1110,7 @@ async def test_a_rival_operators_bookings_are_never_in_the_blast_radius(
     Coastline's booking sits in Goa on these dates, so a Highland incident
     with an identical scope would catch it if the operator filter were wrong.
     """
-    rival_token = await token_for(client, "owner@highland.test")
+    rival_token = await token_for(client, "owner@highland.example.com")
     resp = await client.post(
         "/operator/disruptions",
         headers=auth(rival_token),
@@ -1127,7 +1127,7 @@ async def test_a_rival_operators_bookings_are_never_in_the_blast_radius(
 
 
 async def test_recovery_is_raised_on_the_travellers_behalf(client: AsyncClient, tour):
-    token = await token_for(client, "owner@coastline.test")
+    token = await token_for(client, "owner@coastline.example.com")
     disruption = (
         await client.post(
             "/operator/disruptions",
@@ -1158,7 +1158,7 @@ async def test_recovery_is_raised_on_the_travellers_behalf(client: AsyncClient, 
 async def test_proposing_a_recovery_moves_the_incident_to_mitigating(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "owner@coastline.test")
+    token = await token_for(client, "owner@coastline.example.com")
     disruption = (
         await client.post(
             "/operator/disruptions",
@@ -1188,7 +1188,7 @@ async def test_proposing_a_recovery_moves_the_incident_to_mitigating(
 # -- conflicts over the API ------------------------------------------------
 
 async def test_a_healthy_trip_reports_no_blockers(client: AsyncClient, tour):
-    token = await token_for(client, "ada@coastline.test")
+    token = await token_for(client, "ada@coastline.example.com")
     resp = await client.get(
         f"/trips/{tour['trip'].id}/conflicts", headers=auth(token)
     )
@@ -1197,7 +1197,7 @@ async def test_a_healthy_trip_reports_no_blockers(client: AsyncClient, tour):
 
 
 async def test_conflicts_are_not_readable_by_a_stranger(client: AsyncClient, tour):
-    token = await token_for(client, "bo@coastline.test")
+    token = await token_for(client, "bo@coastline.example.com")
     assert (
         await client.get(f"/trips/{tour['trip'].id}/conflicts", headers=auth(token))
     ).status_code == 403

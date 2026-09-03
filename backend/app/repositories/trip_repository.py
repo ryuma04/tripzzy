@@ -58,15 +58,6 @@ class TripRepository:
             self._alive(select(Trip).where(Trip.id == trip_id))
         )
 
-    async def get_with_stops(self, trip_id: uuid.UUID) -> Trip | None:
-        return await self.db.scalar(
-            self._alive(
-                select(Trip)
-                .where(Trip.id == trip_id)
-                .options(selectinload(Trip.stops).selectinload(TripStop.activities))
-            )
-        )
-
     async def get_by_slug(self, slug: str) -> Trip | None:
         return await self.db.scalar(
             self._alive(

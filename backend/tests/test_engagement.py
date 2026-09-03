@@ -162,9 +162,9 @@ async def tour(db: AsyncSession) -> dict:
     db.add(operator)
     await db.flush()
 
-    owner = await _make_user(db, "owner@shoreline.test", "Owner")
-    traveller = await _make_user(db, "ada@shoreline.test", "Ada")
-    bystander = await _make_user(db, "bo@shoreline.test", "Bo")
+    owner = await _make_user(db, "owner@shoreline.example.com", "Owner")
+    traveller = await _make_user(db, "ada@shoreline.example.com", "Ada")
+    bystander = await _make_user(db, "bo@shoreline.example.com", "Bo")
 
     db.add(
         OperatorMember(
@@ -285,7 +285,7 @@ def auth(token: str) -> dict:
 async def test_opening_a_thread_routes_it_to_the_operator(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assist",
         headers=auth(token),
@@ -306,7 +306,7 @@ async def test_the_concierge_answer_is_labelled_and_authorless(
     client: AsyncClient, tour
 ):
     """A traveller must be able to tell a machine from a colleague."""
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assist",
         headers=auth(token),
@@ -325,7 +325,7 @@ async def test_the_concierge_answer_is_labelled_and_authorless(
 
 async def test_an_ai_reply_does_not_resolve_the_thread(client: AsyncClient, tour):
     """Only a person closes a conversation."""
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assist",
         headers=auth(token),
@@ -335,7 +335,7 @@ async def test_an_ai_reply_does_not_resolve_the_thread(client: AsyncClient, tour
 
 
 async def test_a_bystander_cannot_read_a_conversation(client: AsyncClient, tour):
-    owner_token = await token_for(client, "ada@shoreline.test")
+    owner_token = await token_for(client, "ada@shoreline.example.com")
     thread = (
         await client.post(
             f"/trips/{tour['trip'].id}/assist",
@@ -344,7 +344,7 @@ async def test_a_bystander_cannot_read_a_conversation(client: AsyncClient, tour)
         )
     ).json()["data"]
 
-    other = await token_for(client, "bo@shoreline.test")
+    other = await token_for(client, "bo@shoreline.example.com")
     assert (
         await client.get(f"/assist/{thread['id']}", headers=auth(other))
     ).status_code == 403
@@ -353,7 +353,7 @@ async def test_a_bystander_cannot_read_a_conversation(client: AsyncClient, tour)
 async def test_a_thread_cannot_be_opened_on_someone_elses_trip(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "bo@shoreline.test")
+    token = await token_for(client, "bo@shoreline.example.com")
     resp = await client.post(
         f"/trips/{tour['trip'].id}/assist",
         headers=auth(token),
@@ -365,7 +365,7 @@ async def test_a_thread_cannot_be_opened_on_someone_elses_trip(
 async def test_staff_see_the_thread_and_answering_claims_it(
     client: AsyncClient, tour
 ):
-    traveller_token = await token_for(client, "ada@shoreline.test")
+    traveller_token = await token_for(client, "ada@shoreline.example.com")
     thread = (
         await client.post(
             f"/trips/{tour['trip'].id}/assist",
@@ -374,7 +374,7 @@ async def test_staff_see_the_thread_and_answering_claims_it(
         )
     ).json()["data"]
 
-    owner_token = await token_for(client, "owner@shoreline.test")
+    owner_token = await token_for(client, "owner@shoreline.example.com")
     listed = await client.get("/operator/assist?limit=50", headers=auth(owner_token))
     assert thread["id"] in [t["id"] for t in listed.json()["data"]["items"]]
 
@@ -390,7 +390,7 @@ async def test_staff_see_the_thread_and_answering_claims_it(
 
 
 async def test_replying_with_resolve_closes_it_out(client: AsyncClient, tour):
-    traveller_token = await token_for(client, "ada@shoreline.test")
+    traveller_token = await token_for(client, "ada@shoreline.example.com")
     thread = (
         await client.post(
             f"/trips/{tour['trip'].id}/assist",
@@ -399,7 +399,7 @@ async def test_replying_with_resolve_closes_it_out(client: AsyncClient, tour):
         )
     ).json()["data"]
 
-    owner_token = await token_for(client, "owner@shoreline.test")
+    owner_token = await token_for(client, "owner@shoreline.example.com")
     resp = await client.post(
         f"/operator/assist/{thread['id']}/messages",
         headers=auth(owner_token),
@@ -411,7 +411,7 @@ async def test_replying_with_resolve_closes_it_out(client: AsyncClient, tour):
 
 
 async def test_a_traveller_reply_reopens_the_thread(client: AsyncClient, tour):
-    traveller_token = await token_for(client, "ada@shoreline.test")
+    traveller_token = await token_for(client, "ada@shoreline.example.com")
     thread = (
         await client.post(
             f"/trips/{tour['trip'].id}/assist",
@@ -420,7 +420,7 @@ async def test_a_traveller_reply_reopens_the_thread(client: AsyncClient, tour):
         )
     ).json()["data"]
 
-    owner_token = await token_for(client, "owner@shoreline.test")
+    owner_token = await token_for(client, "owner@shoreline.example.com")
     await client.post(
         f"/operator/assist/{thread['id']}/messages",
         headers=auth(owner_token),
@@ -435,7 +435,7 @@ async def test_a_traveller_reply_reopens_the_thread(client: AsyncClient, tour):
 
 
 async def test_a_traveller_is_refused_the_operator_queue(client: AsyncClient, tour):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     assert (
         await client.get("/operator/assist", headers=auth(token))
     ).status_code == 403
@@ -444,7 +444,7 @@ async def test_a_traveller_is_refused_the_operator_queue(client: AsyncClient, to
 # -- reviews ---------------------------------------------------------------
 
 async def test_a_booked_component_can_be_reviewed(client: AsyncClient, tour):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     resp = await client.post(
         "/reviews",
         headers=auth(token),
@@ -465,7 +465,7 @@ async def test_reviewing_something_you_never_booked_is_refused(
     client: AsyncClient, tour
 ):
     """The basis for trusting the rating the ranker reads."""
-    token = await token_for(client, "bo@shoreline.test")
+    token = await token_for(client, "bo@shoreline.example.com")
     resp = await client.post(
         "/reviews",
         headers=auth(token),
@@ -477,7 +477,7 @@ async def test_reviewing_something_you_never_booked_is_refused(
 async def test_reviewing_a_service_you_did_not_book_is_refused(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     resp = await client.post(
         "/reviews",
         headers=auth(token),
@@ -494,7 +494,7 @@ async def test_a_review_moves_the_rating_the_ranker_reads(
     client: AsyncClient, tour, db: AsyncSession
 ):
     """The whole point of the phase: Complete feeds Discover."""
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     await client.post(
         "/reviews",
         headers=auth(token),
@@ -509,7 +509,7 @@ async def test_a_service_review_rolls_up_to_its_vendor(
     client: AsyncClient, tour, db: AsyncSession
 ):
     """Travellers rate the room, not the company that owns it."""
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     await client.post(
         "/reviews",
         headers=auth(token),
@@ -524,7 +524,7 @@ async def test_deleting_the_last_review_clears_the_rating(
     client: AsyncClient, tour, db: AsyncSession
 ):
     """A rating no review supports is worse than no rating at all."""
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     created = (
         await client.post(
             "/reviews",
@@ -546,7 +546,7 @@ async def test_deleting_the_last_review_clears_the_rating(
 async def test_a_second_review_of_the_same_thing_is_refused(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     payload = {
         "subject": "service",
         "target_id": str(tour["service"].id),
@@ -563,7 +563,7 @@ async def test_a_second_review_of_the_same_thing_is_refused(
 async def test_editing_your_own_review_recomputes_the_aggregate(
     client: AsyncClient, tour, db: AsyncSession
 ):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     created = (
         await client.post(
             "/reviews",
@@ -585,7 +585,7 @@ async def test_editing_your_own_review_recomputes_the_aggregate(
 
 
 async def test_you_cannot_edit_someone_elses_review(client: AsyncClient, tour):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     created = (
         await client.post(
             "/reviews",
@@ -598,7 +598,7 @@ async def test_you_cannot_edit_someone_elses_review(client: AsyncClient, tour):
         )
     ).json()["data"]
 
-    other = await token_for(client, "bo@shoreline.test")
+    other = await token_for(client, "bo@shoreline.example.com")
     assert (
         await client.put(
             f"/reviews/{created['id']}", headers=auth(other), json={"rating": 1}
@@ -608,7 +608,7 @@ async def test_you_cannot_edit_someone_elses_review(client: AsyncClient, tour):
 
 async def test_the_public_listing_carries_a_distribution(client: AsyncClient, tour):
     """An average alone cannot say whether it came from fours or from ones."""
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     await client.post(
         "/reviews",
         headers=auth(token),
@@ -624,7 +624,7 @@ async def test_the_public_listing_carries_a_distribution(client: AsyncClient, to
 async def test_pending_only_lists_what_you_actually_went_to(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     pending = (await client.get("/reviews/pending", headers=auth(token))).json()[
         "data"
     ]
@@ -634,7 +634,7 @@ async def test_pending_only_lists_what_you_actually_went_to(
 
 
 async def test_pending_drops_what_you_have_already_rated(client: AsyncClient, tour):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     await client.post(
         "/reviews",
         headers=auth(token),
@@ -647,7 +647,7 @@ async def test_pending_drops_what_you_have_already_rated(client: AsyncClient, to
 
 
 async def test_a_bystander_has_nothing_to_review(client: AsyncClient, tour):
-    token = await token_for(client, "bo@shoreline.test")
+    token = await token_for(client, "bo@shoreline.example.com")
     pending = (await client.get("/reviews/pending", headers=auth(token))).json()[
         "data"
     ]
@@ -657,7 +657,7 @@ async def test_a_bystander_has_nothing_to_review(client: AsyncClient, tour):
 async def test_you_can_review_your_own_trip_without_a_booking(
     client: AsyncClient, tour
 ):
-    token = await token_for(client, "ada@shoreline.test")
+    token = await token_for(client, "ada@shoreline.example.com")
     resp = await client.post(
         "/reviews",
         headers=auth(token),
@@ -667,7 +667,7 @@ async def test_you_can_review_your_own_trip_without_a_booking(
 
 
 async def test_you_cannot_review_someone_elses_trip(client: AsyncClient, tour):
-    token = await token_for(client, "bo@shoreline.test")
+    token = await token_for(client, "bo@shoreline.example.com")
     resp = await client.post(
         "/reviews",
         headers=auth(token),

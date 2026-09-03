@@ -1,10 +1,11 @@
 
 """Typed application settings, loaded from the environment / .env file."""
 
+import logging
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -92,6 +93,29 @@ class Settings(BaseSettings):
                 "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
             )
         return v
+
+    @model_validator(mode="after")
+    def _no_debug_in_production(self) -> "Settings":
+        """Force ``DEBUG`` off in production, whatever the environment says.
+
+        ``DEBUG`` defaults to true so local development is pleasant, which
+        means a deployment that simply forgets to set it inherits the
+        dangerous value. The unhandled-error handler in ``app.main`` puts
+        ``str(exc)`` into the response body when DEBUG is on -- SQL, table
+        names and connection details included -- so the default failing open
+        is a real disclosure risk rather than a tidiness one.
+
+        Overridden rather than rejected: refusing to boot would turn a
+        forgotten variable into an outage, and there is exactly one safe
+        value here, so the setting is corrected and the correction is logged.
+        """
+        if self.ENVIRONMENT == "production" and self.DEBUG:
+            logging.getLogger("tripzyy").warning(
+                "DEBUG was true with ENVIRONMENT=production; forcing it off. "
+                "Set DEBUG=false explicitly to silence this."
+            )
+            object.__setattr__(self, "DEBUG", False)
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

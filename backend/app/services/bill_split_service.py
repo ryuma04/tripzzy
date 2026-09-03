@@ -8,7 +8,6 @@ the server-side replacement.
 
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Sequence
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
-from app.models import BillSplit, BillSplitMember, Expense, Trip, User
+from app.models import BillSplit, BillSplitMember, Expense, User
 from app.models.enums import (
     BillSplitStatus,
     NotificationType,

@@ -9,7 +9,6 @@ for immediate feedback.
 import re
 from datetime import date
 
-from app.core.exceptions import ValidationError
 
 NAME_RE = re.compile(r"^[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ .'\-]*$")
 PHONE_RE = re.compile(r"^\+?[0-9]{7,15}$")
@@ -111,18 +110,3 @@ def clean_text(value: str | None, *, field: str, min_len: int = 0, max_len: int 
     if len(value) > max_len:
         raise ValueError(f"{field} must be at most {max_len} characters")
     return value
-
-
-def ensure_date_order(
-    start: date, end: date, *, start_field: str, end_field: str
-) -> None:
-    """Spec section 31's recurring rule, in one place."""
-    if start > end:
-        raise ValidationError(
-            f"{end_field} cannot be earlier than {start_field}",
-            details={
-                "fields": {
-                    end_field: f"Must be on or after {start_field}",
-                }
-            },
-        )

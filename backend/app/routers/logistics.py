@@ -11,7 +11,6 @@ from fastapi import APIRouter
 from app.core import responses
 from app.core.deps import CurrentUser, DbSession
 from app.schemas.logistics import (
-    AccommodationCreateRequest,
     AccommodationResponse,
     AccommodationUpdateRequest,
     ExpenseResponse,

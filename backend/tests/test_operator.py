@@ -8,7 +8,6 @@ that one operator can never see another's customers, vendors or money.
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,10 +66,10 @@ async def two_operators(db: AsyncSession) -> dict:
     db.add_all([alpha, beta])
     await db.flush()
 
-    owner = await _make_user(db, "owner@alpha.test", "Owner")
-    coordinator = await _make_user(db, "coord@alpha.test", "Coordinator")
-    rival = await _make_user(db, "owner@beta.test", "Rival")
-    traveller = await _make_user(db, "customer@alpha.test", "Customer")
+    owner = await _make_user(db, "owner@alpha.example.com", "Owner")
+    coordinator = await _make_user(db, "coord@alpha.example.com", "Coordinator")
+    rival = await _make_user(db, "owner@beta.example.com", "Rival")
+    traveller = await _make_user(db, "customer@alpha.example.com", "Customer")
 
     alpha_owner = OperatorMember(
         operator_id=alpha.id, user_id=owner.id, role=OperatorRole.OWNER
@@ -193,7 +192,7 @@ async def test_an_admin_is_not_automatically_operator_staff(
 
 
 async def test_staff_see_their_own_operator(client: AsyncClient, two_operators):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     resp = await client.get("/operator/me", headers=auth(token))
     assert resp.status_code == 200, resp.text
     data = resp.json()["data"]
@@ -204,7 +203,7 @@ async def test_staff_see_their_own_operator(client: AsyncClient, two_operators):
 async def test_a_coordinator_gets_in_with_their_own_role(
     client: AsyncClient, two_operators
 ):
-    token = await token_for(client, "coord@alpha.test")
+    token = await token_for(client, "coord@alpha.example.com")
     data = (await client.get("/operator/me", headers=auth(token))).json()["data"]
     assert data["your_role"] == "coordinator"
 
@@ -215,7 +214,7 @@ async def test_deactivating_a_membership_revokes_access(
     """Revocation is a row update, not an enum migration."""
     from sqlalchemy import update
 
-    token = await token_for(client, "coord@alpha.test")
+    token = await token_for(client, "coord@alpha.example.com")
     assert (await client.get("/operator/me", headers=auth(token))).status_code == 200
 
     await db.execute(
@@ -235,12 +234,12 @@ async def test_deactivating_a_membership_revokes_access(
 async def test_customers_are_scoped_to_your_operator(
     client: AsyncClient, two_operators
 ):
-    alpha = await token_for(client, "owner@alpha.test")
-    beta = await token_for(client, "owner@beta.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
+    beta = await token_for(client, "owner@beta.example.com")
 
     mine = await client.get("/operator/customers", headers=auth(alpha))
     assert [c["email"] for c in mine.json()["data"]["items"]] == [
-        "customer@alpha.test"
+        "customer@alpha.example.com"
     ]
 
     theirs = await client.get("/operator/customers", headers=auth(beta))
@@ -250,8 +249,8 @@ async def test_customers_are_scoped_to_your_operator(
 async def test_bookings_are_scoped_to_your_operator(
     client: AsyncClient, two_operators
 ):
-    alpha = await token_for(client, "owner@alpha.test")
-    beta = await token_for(client, "owner@beta.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
+    beta = await token_for(client, "owner@beta.example.com")
 
     assert len(
         (await client.get("/operator/bookings", headers=auth(alpha)))
@@ -266,7 +265,7 @@ async def test_bookings_are_scoped_to_your_operator(
 async def test_vendors_are_scoped_to_your_operator(
     client: AsyncClient, two_operators
 ):
-    alpha = await token_for(client, "owner@alpha.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
     names = {
         v["name"]
         for v in (await client.get("/operator/vendors", headers=auth(alpha)))
@@ -280,7 +279,7 @@ async def test_you_cannot_read_another_operators_vendor_by_id(
     client: AsyncClient, two_operators
 ):
     """The one place an id *is* accepted, so the check has to be explicit."""
-    alpha = await token_for(client, "owner@alpha.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
     rival_vendor = two_operators["beta_vendor"].id
     resp = await client.get(
         f"/operator/vendors/{rival_vendor}/services", headers=auth(alpha)
@@ -289,7 +288,7 @@ async def test_you_cannot_read_another_operators_vendor_by_id(
 
 
 async def test_money_is_scoped_to_your_operator(client: AsyncClient, two_operators):
-    beta = await token_for(client, "owner@beta.test")
+    beta = await token_for(client, "owner@beta.example.com")
     data = (await client.get("/operator/dashboard", headers=auth(beta))).json()["data"]
     assert data["bookings"]["total"] == 0
     assert Decimal(data["money"]["booked_value"]) == Decimal("0.00")
@@ -302,7 +301,7 @@ async def test_money_is_scoped_to_your_operator(client: AsyncClient, two_operato
 async def test_the_dashboard_counts_distinct_customers(
     client: AsyncClient, two_operators
 ):
-    alpha = await token_for(client, "owner@alpha.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
     data = (await client.get("/operator/dashboard", headers=auth(alpha))).json()["data"]
     assert data["bookings"]["total"] == 1
     assert data["bookings"]["customers"] == 1
@@ -312,7 +311,7 @@ async def test_the_dashboard_counts_distinct_customers(
 async def test_the_schedule_lists_committed_services_by_day(
     client: AsyncClient, two_operators
 ):
-    alpha = await token_for(client, "owner@alpha.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
     resp = await client.get("/operator/schedule?days=30", headers=auth(alpha))
     data = resp.json()["data"]
     assert data["total_events"] == 1
@@ -333,7 +332,7 @@ async def test_a_cancelled_component_leaves_the_schedule(
     )
     await db.commit()
 
-    alpha = await token_for(client, "owner@alpha.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
     resp = await client.get("/operator/schedule?days=30", headers=auth(alpha))
     assert resp.json()["data"]["total_events"] == 0
 
@@ -359,7 +358,7 @@ async def make_group(client: AsyncClient, token: str, **overrides) -> dict:
 
 
 async def test_a_manager_can_create_a_departure(client: AsyncClient, two_operators):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, token)
     assert group["status"] == "forming"
     assert group["seats_taken"] == 0
@@ -370,7 +369,7 @@ async def test_a_coordinator_cannot_create_a_departure(
     client: AsyncClient, two_operators
 ):
     """Coordinators run departures; creating them is a manager's job."""
-    token = await token_for(client, "coord@alpha.test")
+    token = await token_for(client, "coord@alpha.example.com")
     resp = await client.post(
         "/operator/tour-groups",
         json={
@@ -386,7 +385,7 @@ async def test_a_coordinator_cannot_create_a_departure(
 async def test_a_departure_cannot_end_before_it_starts(
     client: AsyncClient, two_operators
 ):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     resp = await client.post(
         "/operator/tour-groups",
         json={
@@ -403,7 +402,7 @@ async def test_assigning_a_coordinator_clears_the_unstaffed_count(
     client: AsyncClient, two_operators
 ):
     """The number the console exists to make actionable."""
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, token)
 
     before = (await client.get("/operator/dashboard", headers=auth(token))).json()
@@ -429,7 +428,7 @@ async def test_you_cannot_assign_another_operators_staff(
 ):
     from sqlalchemy import select
 
-    alpha = await token_for(client, "owner@alpha.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, alpha)
 
     rival_member = await db.scalar(
@@ -448,7 +447,7 @@ async def test_you_cannot_assign_another_operators_staff(
 async def test_adding_a_booking_fills_the_departure(
     client: AsyncClient, two_operators
 ):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, token, capacity=2)
 
     resp = await client.post(
@@ -465,7 +464,7 @@ async def test_adding_a_booking_fills_the_departure(
 
 
 async def test_a_departure_cannot_be_overfilled(client: AsyncClient, two_operators):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, token, capacity=1)
     resp = await client.post(
         f"/operator/tour-groups/{group['id']}/members",
@@ -479,7 +478,7 @@ async def test_a_departure_cannot_be_overfilled(client: AsyncClient, two_operato
 async def test_the_same_booking_cannot_join_twice(
     client: AsyncClient, two_operators
 ):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, token)
     body = {"booking_id": str(two_operators["booking"].id), "seats": 1}
 
@@ -499,7 +498,7 @@ async def test_the_same_booking_cannot_join_twice(
 async def test_removing_a_booking_reopens_a_full_departure(
     client: AsyncClient, two_operators
 ):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     group = await make_group(client, token, capacity=1)
     added = await client.post(
         f"/operator/tour-groups/{group['id']}/members",
@@ -521,8 +520,8 @@ async def test_removing_a_booking_reopens_a_full_departure(
 async def test_you_cannot_touch_another_operators_departure(
     client: AsyncClient, two_operators
 ):
-    alpha = await token_for(client, "owner@alpha.test")
-    beta = await token_for(client, "owner@beta.test")
+    alpha = await token_for(client, "owner@alpha.example.com")
+    beta = await token_for(client, "owner@beta.example.com")
     group = await make_group(client, alpha)
 
     resp = await client.put(
@@ -540,7 +539,7 @@ async def test_you_cannot_touch_another_operators_departure(
 async def test_the_roster_reports_each_persons_load(
     client: AsyncClient, two_operators
 ):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     roster = (await client.get("/operator/coordinators", headers=auth(token))).json()
     names = {c["name"] for c in roster["data"]}
     assert names == {"Owner Staff", "Coordinator Staff"}
@@ -550,6 +549,6 @@ async def test_the_roster_reports_each_persons_load(
 
 
 async def test_money_is_a_string_throughout(client: AsyncClient, two_operators):
-    token = await token_for(client, "owner@alpha.test")
+    token = await token_for(client, "owner@alpha.example.com")
     data = (await client.get("/operator/dashboard", headers=auth(token))).json()["data"]
     assert all(isinstance(v, str) for v in data["money"].values())

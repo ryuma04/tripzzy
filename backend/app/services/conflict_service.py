@@ -569,19 +569,6 @@ class ConflictService:
             and c.code not in self.ALREADY_REPORTED_INLINE
         ]
 
-    async def warnings_for(self, trip_id: uuid.UUID) -> list[str]:
-        """The advisory strings the itinerary endpoints already return.
-
-        Bookings are excluded: these fire on ordinary itinerary edits, where a
-        commercial consequence is the adaptation engine's business to report
-        properly rather than something to mention in passing.
-        """
-        return [
-            c.message
-            for c in await self.check_trip(trip_id, include_bookings=False)
-            if c.severity is not ConflictSeverity.INFO
-        ]
-
 
 # Blockers first, then warnings, then notes -- the order somebody reading the
 # list would want to deal with them in.

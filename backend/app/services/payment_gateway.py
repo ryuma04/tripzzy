@@ -82,12 +82,3 @@ class SimulatedGateway:
                 failure_reason="Refund amount must be greater than zero",
             )
         return GatewayResult(approved=True, reference=self._reference("ref"))
-
-    def void(self, authorization_reference: str) -> GatewayResult:
-        """Release an authorisation that was never captured.
-
-        Distinct from a refund: nothing has moved, so there is nothing to
-        send back. Keeping the two apart is what stops a cancellation before
-        capture from being recorded as money returned.
-        """
-        return GatewayResult(approved=True, reference=self._reference("void"))

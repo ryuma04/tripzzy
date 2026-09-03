@@ -7,15 +7,14 @@ no endpoint takes an ``operator_id`` a caller could tamper with.
 """
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models import (
     Booking,
     BookingItem,
@@ -24,7 +23,6 @@ from app.models import (
     Payment,
     TourGroup,
     TourGroupMember,
-    Trip,
     User,
     Vendor,
     VendorService,
@@ -32,7 +30,6 @@ from app.models import (
 from app.models.enums import (
     BookingItemStatus,
     BookingStatus,
-    OperatorRole,
     PaymentKind,
     PaymentStatus,
     TourGroupStatus,

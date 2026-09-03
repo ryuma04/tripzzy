@@ -17,7 +17,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from passlib.context import CryptContext
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -160,13 +160,3 @@ class OTPService:
         user.is_email_verified = True
         await db.flush()
         return user
-
-    @staticmethod
-    async def purge_expired(db: AsyncSession) -> int:
-        """Housekeeping: drop codes that can no longer be used."""
-        result = await db.execute(
-            select(func.count())
-            .select_from(EmailVerificationCode)
-            .where(EmailVerificationCode.expires_at < _now())
-        )
-        return result.scalar_one()

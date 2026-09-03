@@ -26,7 +26,6 @@ from app.models import RevokedToken, User
 from app.models.enums import UserRole, UserStatus
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import RegisterRequest
-from app.services.email_service import EmailService
 from app.services.otp_service import OTPService
 
 logger = logging.getLogger(__name__)

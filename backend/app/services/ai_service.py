@@ -12,10 +12,6 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-class AIServiceError(Exception):
-    pass
-
-
 class AIService:
     def __init__(self):
         self.api_key = settings.GROQ_API_KEY

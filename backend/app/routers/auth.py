@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.core import responses
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession, bearer_scheme
-from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.exceptions import UnauthorizedError
 from app.core.rate_limit import rate_limit_auth
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (

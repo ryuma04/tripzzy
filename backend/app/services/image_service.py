@@ -2,7 +2,6 @@
 
 import base64
 import logging
-import os
 import uuid
 from pathlib import Path
 

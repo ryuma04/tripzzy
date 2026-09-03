@@ -140,7 +140,7 @@ export default function LoginPage() {
     setErrors({});
     if (role === "admin") {
       setEmail("admin@tripzyy.com");
-      setPassword("Adm1n!Pass");
+      setPassword("Admin@123");
       showToast("Station Admin credentials loaded (admin@tripzyy.com)", "info");
     } else if (role === "operator") {
       setEmail("operator@tripzyy.com");
@@ -151,9 +151,9 @@ export default function LoginPage() {
       setPassword("Coord@123");
       showToast("Tour Coordinator credentials loaded (coordinator@tripzyy.com)", "info");
     } else {
-      setEmail("tester@tripzyy.com");
-      setPassword("TestUser@123");
-      showToast("Explorer credentials loaded (tester@tripzyy.com)", "info");
+      setEmail("traveller@tripzyy.com");
+      setPassword("Travel@123");
+      showToast("Explorer credentials loaded (traveller@tripzyy.com)", "info");
     }
   };
 

@@ -37,7 +37,7 @@ import { operatorService } from "@/services/operator";
 import { adminService } from "@/services/admin";
 import { operatorAssistService } from "@/services/engagement";
 import { operatorAdaptationService } from "@/services/adaptation";
-import { getCurrentUser, useAuthUser } from "@/lib/auth";
+import { getCurrentUser, useAuthUser, switchToAdminUser } from "@/lib/auth";
 import { DEMO_TRIPS, DEMO_DESTINATIONS } from "@/lib/demo-data";
 import { DEMO_MODE } from "@/lib/demo-mode";
 import { unwrapItems } from "@/lib/api";
@@ -905,16 +905,24 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              <Link href="/admin">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!isAdmin) {
+                    await switchToAdminUser();
+                  }
+                  router.push("/admin");
+                }}
+              >
                 <NeoButton
                   variant="primary"
                   size="lg"
                   rightIcon={<ArrowRight className="w-5 h-5" />}
-                  className="shadow-[4px_4px_0px_#171313]"
+                  className="shadow-[4px_4px_0px_#171313] cursor-pointer"
                 >
                   Enter Admin Console
                 </NeoButton>
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -953,11 +961,19 @@ export default function DashboardPage() {
                   Platform User Audit Roster
                 </h3>
               </div>
-              <Link href="/admin">
-                <NeoButton variant="cream" size="sm">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!isAdmin) {
+                    await switchToAdminUser();
+                  }
+                  router.push("/admin");
+                }}
+              >
+                <NeoButton variant="cream" size="sm" className="cursor-pointer">
                   Full User Directory →
                 </NeoButton>
-              </Link>
+              </button>
             </div>
 
             <div className="flex flex-col gap-3">

@@ -660,8 +660,8 @@ export default function RegisterPage() {
             type="button"
             onClick={() =>
               handleQuickDemoLogin(
-                "tester@tripzyy.com",
-                "TestUser@123",
+                "traveller@tripzyy.com",
+                "Travel@123",
                 "user",
                 "/dashboard"
               )
@@ -673,7 +673,7 @@ export default function RegisterPage() {
               <span>Explorer</span>
             </div>
             <span className="text-[10px] font-bold text-neutral-700 block truncate">
-              Yash (Loaded Test Account)
+              Rahul (Traveller)
             </span>
           </button>
 
@@ -724,7 +724,7 @@ export default function RegisterPage() {
             onClick={() =>
               handleQuickDemoLogin(
                 "admin@tripzyy.com",
-                "Adm1n!Pass",
+                "Admin@123",
                 "admin",
                 "/admin"
               )

@@ -13,8 +13,8 @@ import type {
   LoginPayload,
   RegisterPayload,
   User,
+  UserRole,
 } from "@/types";
-
 
 export interface RegisterResultData {
   user: User;
@@ -32,10 +32,24 @@ function dispatchAuthChange() {
   }
 }
 
+export function getRoleRedirectPath(roleOrUser: UserRole | User | null | undefined): string {
+  if (!roleOrUser) return "/dashboard";
+  const role = typeof roleOrUser === "string" ? roleOrUser : roleOrUser.role;
+  switch (role) {
+    case "admin":
+      return "/admin";
+    case "operator":
+    case "coordinator":
+      return "/operator";
+    default:
+      return "/dashboard";
+  }
+}
+
 export async function login(
   payloadOrEmail: LoginPayload | string,
   password?: string,
-  role?: "user" | "admin"
+  role?: UserRole
 ) {
   const payload: LoginPayload =
     typeof payloadOrEmail === "string"
@@ -87,7 +101,7 @@ export async function loginWithOtp(email: string, code: string) {
 }
 
 export async function register(payload: RegisterPayload) {
-  const targetRole: "user" | "admin" = payload.role || "user";
+  const targetRole: UserRole = payload.role || "user";
 
   const backendPayload = {
     first_name: payload.first_name,
@@ -100,6 +114,7 @@ export async function register(payload: RegisterPayload) {
     country: payload.country || "India",
     additional_info: payload.additional_info || payload.bio || "",
     role: targetRole,
+    company_name: payload.company_name,
   };
 
   const res = await apiClient.post<RegisterResultData>(
@@ -250,7 +265,9 @@ export function useAuthUser() {
     user,
     role: user?.role ?? null,
     isAdmin: user?.role === "admin",
-    isUser: user?.role === "user",
+    isOperator: user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager",
+    isCoordinator: user?.role === "coordinator" || user?.operator_role === "coordinator",
+    isUser: user?.role === "user" && !user?.operator_role,
     updateUser: updateStoredUser,
     isMounted: mounted,
   };

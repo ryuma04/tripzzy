@@ -28,4 +28,13 @@ export const destinationService = {
     longitude?: number;
     image_url?: string;
   }) => apiClient.post<Destination>("/destinations/from-place", payload),
+
+  getSaved: () =>
+    apiClient.get<{ items: Destination[]; count: number }>("/destinations/saved"),
+
+  save: (destinationId: string) =>
+    apiClient.post<{ saved: boolean; destination_id: string }>(`/destinations/${destinationId}/save`),
+
+  unsave: (destinationId: string) =>
+    apiClient.delete<{ saved: boolean; destination_id: string }>(`/destinations/${destinationId}/save`),
 };

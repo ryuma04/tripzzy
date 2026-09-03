@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
+import { Modal } from "@/components/ui/modal";
+import { NeoInput } from "@/components/ui/neo-input";
 import { bookingService } from "@/services/bookings";
 import { unwrapItems } from "@/lib/api";
 import type {
@@ -65,6 +67,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("card");
+  const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
+  const [payAmount, setPayAmount] = useState<string>("");
   const [pendingCancel, setPendingCancel] = useState<{
     booking: Booking;
     item?: BookingItem;
@@ -305,7 +309,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                   variant="primary"
                   size="sm"
                   disabled={isBusy}
-                  onClick={() => handlePay(booking)}
+                  onClick={() => {
+                    setPayingBooking(booking);
+                    setPayAmount(String(outstanding));
+                  }}
                   leftIcon={
                     isBusy ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -314,7 +321,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                     )
                   }
                 >
-                  Pay ₹{money(outstanding)}
+                  Pay Outstanding (₹{money(outstanding)})
                 </NeoButton>
 
                 {/* A deposit holds the tour without settling it. */}
@@ -323,9 +330,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                     variant="white"
                     size="sm"
                     disabled={isBusy}
-                    onClick={() =>
-                      handlePay(booking, (outstanding * 0.2).toFixed(2))
-                    }
+                    onClick={() => {
+                      setPayingBooking(booking);
+                      setPayAmount((outstanding * 0.2).toFixed(2));
+                    }}
                     leftIcon={<Wallet className="w-3.5 h-3.5" />}
                   >
                     Pay 20% deposit
@@ -345,6 +353,141 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
           </NeoCard>
         );
       })}
+
+      {/* Interactive Payment / Deposit Modal */}
+      <Modal
+        isOpen={payingBooking !== null}
+        onClose={() => setPayingBooking(null)}
+        title="Make a Payment / Deposit"
+        subtitle={
+          payingBooking
+            ? `Booking ${payingBooking.reference} — ₹${money(payingBooking.amount_outstanding)} outstanding`
+            : "Payment"
+        }
+      >
+        {payingBooking && (
+          <div className="flex flex-col gap-4">
+            {/* Balance Overview */}
+            <div className="p-3.5 bg-neutral-50 border-2 border-[#171313] rounded-xl flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-neutral-500 uppercase">Total Booking</span>
+                <div className="font-display font-black text-base text-[#171313]">
+                  ₹{money(payingBooking.total)}
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-neutral-500 uppercase">Paid So Far</span>
+                <div className="font-display font-black text-base text-[#107038]">
+                  ₹{money(payingBooking.amount_paid)}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-neutral-500 uppercase">Outstanding</span>
+                <div className="font-display font-black text-base text-[#D94B3D]">
+                  ₹{money(payingBooking.amount_outstanding)}
+                </div>
+              </div>
+            </div>
+
+            {/* Presets */}
+            <div className="flex flex-col gap-1.5">
+              <label className="font-display font-bold text-xs uppercase tracking-wider text-[#171313]">
+                Quick Installment Presets
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPayAmount(String(payingBooking.amount_outstanding))}
+                  className={`p-2.5 rounded-xl border-2 font-display font-bold text-xs cursor-pointer transition-all ${
+                    payAmount === String(payingBooking.amount_outstanding)
+                      ? "bg-[#FFF4E6] border-[#171313] shadow-[2px_2px_0px_#171313] text-[#171313]"
+                      : "bg-white border-neutral-200 hover:bg-neutral-50"
+                  }`}
+                >
+                  Full (₹{money(payingBooking.amount_outstanding)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPayAmount((Number(payingBooking.amount_outstanding) * 0.5).toFixed(2))
+                  }
+                  className="p-2.5 bg-white border-2 border-neutral-200 hover:bg-neutral-50 rounded-xl font-display font-bold text-xs cursor-pointer"
+                >
+                  50% Half
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPayAmount((Number(payingBooking.amount_outstanding) * 0.2).toFixed(2))
+                  }
+                  className="p-2.5 bg-white border-2 border-neutral-200 hover:bg-neutral-50 rounded-xl font-display font-bold text-xs cursor-pointer"
+                >
+                  20% Deposit
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Amount */}
+            <NeoInput
+              label="Amount to Pay Now (₹)"
+              type="number"
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              required
+            />
+
+            {/* Payment Method */}
+            <div className="flex flex-col gap-1.5">
+              <label className="font-display font-bold text-xs uppercase tracking-wider text-[#171313]">
+                Payment Method
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {METHODS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMethod(m)}
+                    className={`p-2 rounded-xl border-2 font-display font-bold text-xs uppercase cursor-pointer transition-all ${
+                      method === m
+                        ? "bg-white border-[#171313] shadow-[2px_2px_0px_#171313] text-[#E51919]"
+                        : "bg-neutral-50 border-neutral-200 text-neutral-600"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t-2 border-[#171313]">
+              <NeoButton variant="white" size="sm" onClick={() => setPayingBooking(null)}>
+                Cancel
+              </NeoButton>
+              <NeoButton
+                variant="primary"
+                size="sm"
+                disabled={
+                  !payAmount ||
+                  Number(payAmount) <= 0 ||
+                  Number(payAmount) > Number(payingBooking.amount_outstanding)
+                }
+                onClick={() => {
+                  const amt =
+                    payAmount === String(payingBooking.amount_outstanding)
+                      ? undefined
+                      : payAmount;
+                  handlePay(payingBooking, amt);
+                  setPayingBooking(null);
+                }}
+                leftIcon={<CreditCard className="w-4 h-4" />}
+              >
+                Pay ₹{money(payAmount || 0)}
+              </NeoButton>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <ConfirmationModal
         isOpen={pendingCancel !== null}

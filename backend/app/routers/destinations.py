@@ -4,10 +4,12 @@ import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 
 from app.core import responses
-from app.core.deps import DbSession, Pagination
+from app.core.deps import CurrentUser, DbSession, Pagination
 from app.core.exceptions import NotFoundError
+from app.models import Destination, SavedDestination
 from app.repositories.destination_repository import (
     ActivityRepository,
     DestinationRepository,
@@ -21,6 +23,26 @@ from app.schemas.destination import (
 )
 
 router = APIRouter(prefix="/destinations", tags=["destinations"])
+
+
+@router.get("/saved", summary="List your saved destinations")
+async def list_saved_destinations(current_user: CurrentUser, db: DbSession):
+    """Retrieve all destinations bookmarked by the authenticated user."""
+    stmt = (
+        select(Destination)
+        .join(SavedDestination, SavedDestination.destination_id == Destination.id)
+        .where(SavedDestination.user_id == current_user.id)
+        .order_by(SavedDestination.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    repo = DestinationRepository(db)
+    counts = await repo.activity_counts([d.id for d in rows])
+    items = []
+    for dest in rows:
+        payload = DestinationSummary.model_validate(dest).model_dump()
+        payload["activity_count"] = counts.get(dest.id, 0)
+        items.append(payload)
+    return responses.success({"items": items, "count": len(items)}, "OK")
 
 
 @router.post("/from-place", summary="Register or find destination from Google Place")
@@ -138,4 +160,41 @@ async def destination_activities(
         page=page.page,
         limit=page.limit,
         total=total,
+    )
+
+
+@router.post("/{destination_id}/save", summary="Bookmark a destination")
+async def save_destination(
+    destination_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    """Bookmark a destination to personal saved list."""
+    dest = await DestinationRepository(db).get(destination_id)
+    if dest is None:
+        raise NotFoundError("Destination")
+
+    existing = await db.get(SavedDestination, (current_user.id, destination_id))
+    if existing is None:
+        saved = SavedDestination(user_id=current_user.id, destination_id=destination_id)
+        db.add(saved)
+        await db.commit()
+
+    return responses.success(
+        {"saved": True, "destination_id": str(destination_id)},
+        "Destination bookmarked",
+    )
+
+
+@router.delete("/{destination_id}/save", summary="Remove bookmark from a destination")
+async def unsave_destination(
+    destination_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    """Remove a destination from personal bookmarks."""
+    existing = await db.get(SavedDestination, (current_user.id, destination_id))
+    if existing is not None:
+        await db.delete(existing)
+        await db.commit()
+
+    return responses.success(
+        {"saved": False, "destination_id": str(destination_id)},
+        "Bookmark removed",
     )

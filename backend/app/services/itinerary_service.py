@@ -159,6 +159,7 @@ class ItineraryService:
                     .options(
                         selectinload(TripStop.activities),
                         selectinload(TripStop.destination),
+                        selectinload(TripStop.accommodations),
                     )
                     .order_by(TripStop.order_index)
                 )
@@ -171,6 +172,7 @@ class ItineraryService:
     @staticmethod
     def stop_out(stop: TripStop, *, include_activities: bool = False) -> dict:
         activities = list(stop.activities or [])
+        accommodations = list(stop.accommodations or [])
         dest_payload = None
         if stop.destination is not None:
             dest_payload = {
@@ -203,6 +205,21 @@ class ItineraryService:
                 (Decimal(str(a.estimated_cost)) for a in activities),
                 Decimal("0"),
             ),
+            "accommodations": [
+                {
+                    "id": str(acc.id),
+                    "stop_id": str(acc.stop_id),
+                    "name": acc.name,
+                    "address": acc.address,
+                    "check_in": acc.check_in.isoformat() if hasattr(acc.check_in, "isoformat") else str(acc.check_in),
+                    "check_out": acc.check_out.isoformat() if hasattr(acc.check_out, "isoformat") else str(acc.check_out),
+                    "estimated_cost": float(acc.estimated_cost) if acc.estimated_cost is not None else 0.0,
+                    "booking_url": acc.booking_url,
+                    "notes": acc.notes,
+                    "nights": (acc.check_out - acc.check_in).days if acc.check_out and acc.check_in else 1,
+                }
+                for acc in accommodations
+            ],
         }
         if include_activities:
             payload["activities"] = sorted(

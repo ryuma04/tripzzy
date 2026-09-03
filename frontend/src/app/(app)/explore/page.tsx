@@ -17,6 +17,7 @@ import {
   Globe2,
   Navigation,
   Sparkles,
+  Bookmark,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -45,6 +46,7 @@ function ExploreContent() {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Activity[]>([]);
   const [userTrips, setUserTrips] = useState<Trip[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
@@ -125,6 +127,51 @@ function ExploreContent() {
     }
   };
 
+  // Load user's saved destinations
+  useEffect(() => {
+    async function loadSaved() {
+      try {
+        const res = await destinationService.getSaved();
+        if (res.success && res.data) {
+          const items = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          setSavedIds(new Set(items.map((d: Destination) => d.id)));
+        }
+      } catch (err) {
+        // Unauthenticated or network issue
+      }
+    }
+    loadSaved();
+  }, []);
+
+  const handleToggleSave = async (destinationId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const isSaved = savedIds.has(destinationId);
+    try {
+      if (isSaved) {
+        const res = await destinationService.unsave(destinationId);
+        if (res.success) {
+          setSavedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(destinationId);
+            return next;
+          });
+          showToast("Destination removed from bookmarks.", "info");
+        }
+      } else {
+        const res = await destinationService.save(destinationId);
+        if (res.success) {
+          setSavedIds((prev) => new Set([...prev, destinationId]));
+          showToast("Destination saved to your bookmarks!", "success");
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to update bookmark.", "error");
+    }
+  };
+
   useEffect(() => {
     if (initialQuery) setSearchQuery(initialQuery);
   }, [initialQuery]);
@@ -134,7 +181,11 @@ function ExploreContent() {
       setIsLoading(true);
       try {
         const [destsRes, actsRes, tripsRes] = await Promise.all([
-          destinationService.search({ query: searchQuery || undefined, limit: 50 }),
+          destinationService.search({
+            query: searchQuery || undefined,
+            category: selectedCategory !== "all" ? selectedCategory : undefined,
+            limit: 50,
+          }),
           activityService.search({
             query: searchQuery || undefined,
             category: selectedCategory !== "all" ? selectedCategory : undefined,
@@ -179,14 +230,21 @@ function ExploreContent() {
 
   const tabs = [
     { id: "all", label: "All Catalog", count: destinations.length + activities.length },
+    { id: "saved", label: `Saved (${savedIds.size})`, icon: <Bookmark className="w-4 h-4" /> },
     { id: "map", label: "Interactive Map", count: destinations.length, icon: <MapPin className="w-4 h-4" /> },
     { id: "google_places", label: "India & Global Places (Google)", count: placesResults.length, icon: <Globe2 className="w-4 h-4" /> },
     { id: "destinations", label: "Destinations & Cities", count: destinations.length },
     { id: "activities", label: "Activities & Tours", count: activities.length },
   ];
 
-  const filteredDestinations = activeTab === "activities" ? [] : destinations;
-  const filteredActivities = activeTab === "destinations" ? [] : activities;
+  const filteredDestinations =
+    activeTab === "activities"
+      ? []
+      : activeTab === "saved"
+      ? destinations.filter((d) => savedIds.has(d.id))
+      : destinations;
+  const filteredActivities =
+    activeTab === "destinations" || activeTab === "saved" ? [] : activities;
 
   const handleAddActivityToTrip = (act: Activity) => {
     setSelectedActivity(act);
@@ -525,6 +583,18 @@ function ExploreContent() {
                   <span className="absolute top-3 left-3 text-[10px] font-display font-extrabold uppercase px-2.5 py-1 bg-[#FFF4E6] border-2 border-[#171313] rounded-lg shadow-[2px_2px_0px_#171313]">
                     {dest.region || dest.country}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleSave(dest.id, e)}
+                    className={`absolute top-3 right-3 p-2 rounded-xl border-2 border-[#171313] shadow-[2px_2px_0px_#171313] transition-all cursor-pointer ${
+                      savedIds.has(dest.id)
+                        ? "bg-[#E51919] text-white"
+                        : "bg-[#FFF4E6] text-[#171313] hover:bg-white"
+                    }`}
+                    title={savedIds.has(dest.id) ? "Remove from bookmarks" : "Save destination"}
+                  >
+                    <Bookmark className="w-4 h-4 fill-current" />
+                  </button>
                 </div>
 
                 <div className="p-5 flex flex-col flex-1 justify-between gap-3">

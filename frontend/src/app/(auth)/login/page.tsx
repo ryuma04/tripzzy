@@ -12,20 +12,24 @@ import {
   Sparkles,
   Compass,
   Shield,
+  Users,
+  Building2,
+  Zap,
 } from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoInput } from "@/components/ui/neo-input";
 import { NeoButton } from "@/components/ui/neo-button";
 import { OtpInput } from "@/components/ui/otp-input";
 import { useToast } from "@/components/ui/toast";
-import { login, requestLoginOtp, loginWithOtp } from "@/lib/auth";
+import { login, requestLoginOtp, loginWithOtp, getRoleRedirectPath } from "@/lib/auth";
+import type { UserRole } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
   const [authMode, setAuthMode] = useState<"password" | "otp">("password");
-  const [selectedRole, setSelectedRole] = useState<"user" | "admin">("user");
+  const [selectedRole, setSelectedRole] = useState<UserRole>("user");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
@@ -89,15 +93,10 @@ export default function LoginPage() {
     try {
       const res = await login(email, password, selectedRole);
       if (res.success && res.data) {
-        // Route on the role the server actually issued, not on what was
-        // picked in the form or on the email containing "admin".
-        if (res.data.user?.role === "admin") {
-          showToast("Signed in as Admin Commander! Opening Admin Panel...", "success");
-          router.push("/admin");
-        } else {
-          showToast("Signed in successfully! Welcome to Explorer Dashboard.", "success");
-          router.push("/dashboard");
-        }
+        const dest = getRoleRedirectPath(res.data.user);
+        const roleLabel = res.data.user?.role?.toUpperCase() || "USER";
+        showToast(`Signed in successfully as ${roleLabel}!`, "success");
+        router.push(dest);
       } else {
         showToast(res.message || "Invalid credentials. Please verify.", "error");
       }
@@ -122,13 +121,10 @@ export default function LoginPage() {
     try {
       const res = await loginWithOtp(email, otp);
       if (res.success && res.data) {
-        if (res.data.user?.role === "admin") {
-          showToast("OTP verified! Welcome back, Admin.", "success");
-          router.push("/admin");
-        } else {
-          showToast("OTP verified! Access granted to Explorer Dashboard.", "success");
-          router.push("/dashboard");
-        }
+        const dest = getRoleRedirectPath(res.data.user);
+        const roleLabel = res.data.user?.role?.toUpperCase() || "USER";
+        showToast(`OTP verified! Welcome to ${roleLabel} Workspace.`, "success");
+        router.push(dest);
       } else {
         showToast(res.message || "Invalid verification code.", "error");
       }
@@ -139,65 +135,103 @@ export default function LoginPage() {
     }
   };
 
-  const handleQuickPreset = (role: "user" | "admin") => {
+  const handleQuickPreset = (role: UserRole) => {
     setSelectedRole(role);
+    setErrors({});
     if (role === "admin") {
       setEmail("admin@tripzyy.com");
-      setPassword("Admin@123");
-      showToast("Admin credentials loaded (admin@tripzyy.com / Admin@123)", "info");
+      setPassword("Adm1n!Pass");
+      showToast("Station Admin credentials loaded (admin@tripzyy.com)", "info");
+    } else if (role === "operator") {
+      setEmail("operator@tripzyy.com");
+      setPassword("Operate@123");
+      showToast("Tour Operator credentials loaded (operator@tripzyy.com)", "info");
+    } else if (role === "coordinator") {
+      setEmail("coordinator@tripzyy.com");
+      setPassword("Coord@123");
+      showToast("Tour Coordinator credentials loaded (coordinator@tripzyy.com)", "info");
     } else {
-      setEmail("traveller@tripzyy.com");
-      setPassword("Travel@123");
-      showToast("Explorer credentials loaded (traveller@tripzyy.com / Travel@123)", "info");
+      setEmail("tester@tripzyy.com");
+      setPassword("TestUser@123");
+      showToast("Explorer credentials loaded (tester@tripzyy.com)", "info");
     }
   };
 
   return (
-    <NeoCard className="p-6 sm:p-8 bg-[#FFFFFF] border-[4px] border-[#171313] shadow-[8px_8px_0px_#171313]">
+    <NeoCard className="p-6 sm:p-8 bg-[#FFFFFF] border-[4px] border-[#171313] shadow-[8px_8px_0px_#171313] max-w-xl mx-auto">
       <div className="text-center mb-6">
         <div className="w-14 h-14 bg-[#E51919] border-[3px] border-[#171313] rounded-2xl flex items-center justify-center text-white mx-auto mb-3 shadow-[3px_3px_0px_#171313]">
           <KeyRound className="w-7 h-7" />
         </div>
         <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-[#171313] tracking-tight">
-          Welcome Back
+          Welcome to Tripzyy
         </h1>
         <p className="text-xs sm:text-sm font-medium text-neutral-600 mt-1">
-          Access your {selectedRole === "admin" ? "Admin Control Center" : "Explorer Workspace"} & routes.
+          Sign in to access your role-specific station & workspace.
         </p>
       </div>
 
       {/* Role Selection / Quick Presets */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="font-display font-extrabold text-[10px] uppercase tracking-wider text-[#171313]">
-            Login Role Perspective
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-display font-extrabold text-[11px] uppercase tracking-wider text-[#171313]">
+            Select Workspace Role (1-Click Auto-Fill)
           </span>
-          <span className="text-[10px] font-bold text-neutral-500">Quick Switch</span>
+          <span className="text-[10px] font-bold text-[#E51919] flex items-center gap-1">
+            <Zap className="w-3 h-3" /> Quick Switch
+          </span>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <button
             type="button"
             onClick={() => handleQuickPreset("user")}
-            className={`py-2 px-3 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+            className={`py-2 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
               selectedRole === "user"
-                ? "bg-[#FFF5E9] text-[#171313] border-[#171313] shadow-[2px_2px_0px_#E51919]"
-                : "bg-[#FAF7F2] text-neutral-600 border-neutral-300 hover:bg-[#FFFFFF]"
+                ? "bg-[#E51919] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
+                : "bg-[#FAF7F2] text-neutral-700 border-neutral-300 hover:bg-[#FFFFFF]"
             }`}
           >
-            <Compass className="w-3.5 h-3.5 text-[#E51919]" />
-            <span>User / Explorer</span>
+            <Compass className="w-4 h-4" />
+            <span>Explorer</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => handleQuickPreset("coordinator")}
+            className={`py-2 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+              selectedRole === "coordinator"
+                ? "bg-[#7C3AED] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
+                : "bg-[#FAF7F2] text-neutral-700 border-neutral-300 hover:bg-[#FFFFFF]"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Coordinator</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleQuickPreset("operator")}
+            className={`py-2 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+              selectedRole === "operator"
+                ? "bg-[#D97706] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
+                : "bg-[#FAF7F2] text-neutral-700 border-neutral-300 hover:bg-[#FFFFFF]"
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Operator</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleQuickPreset("admin")}
-            className={`py-2 px-3 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+            className={`py-2 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
               selectedRole === "admin"
-                ? "bg-[#FFF0F0] text-[#171313] border-[#171313] shadow-[2px_2px_0px_#E51919]"
-                : "bg-[#FAF7F2] text-neutral-600 border-neutral-300 hover:bg-[#FFFFFF]"
+                ? "bg-[#171313] text-white border-[#171313] shadow-[2px_2px_0px_#E51919] -translate-y-0.5"
+                : "bg-[#FAF7F2] text-neutral-700 border-neutral-300 hover:bg-[#FFFFFF]"
             }`}
           >
-            <Shield className="w-3.5 h-3.5 text-[#E51919]" />
-            <span>Admin Panel</span>
+            <Shield className="w-4 h-4" />
+            <span>Admin</span>
           </button>
         </div>
       </div>
@@ -265,13 +299,11 @@ export default function LoginPage() {
               <input
                 type="checkbox"
                 defaultChecked
-                className="w-4 h-4 rounded border-2 border-[#171313] accent-[#D94B3D] cursor-pointer"
+                className="w-4 h-4 rounded border-2 border-[#171313] accent-[#E51919] cursor-pointer"
               />
               <span>Remember this station</span>
             </label>
-            <a href="#" className="hover:underline text-[#D94B3D]">
-              Forgot password?
-            </a>
+            <span className="text-neutral-500">Demo password auto-filled</span>
           </div>
 
           <NeoButton
@@ -282,7 +314,7 @@ export default function LoginPage() {
             rightIcon={<ArrowRight className="w-5 h-5" />}
             className="w-full mt-2"
           >
-            Sign In as {selectedRole === "admin" ? "Admin Commander" : "Explorer"}
+            Sign In as {selectedRole.toUpperCase()}
           </NeoButton>
         </form>
       )}
@@ -326,7 +358,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setIsOtpSent(false)}
-                    className="text-xs font-bold text-[#D94B3D] hover:underline"
+                    className="text-xs font-bold text-[#E51919] hover:underline cursor-pointer"
                   >
                     Change Email
                   </button>
@@ -337,9 +369,7 @@ export default function LoginPage() {
                     length={6}
                     value={otp}
                     onChange={setOtp}
-                    onComplete={(code) => {
-                      setOtp(code);
-                    }}
+                    onComplete={(code) => setOtp(code)}
                   />
                 </div>
 
@@ -357,7 +387,9 @@ export default function LoginPage() {
                   disabled={countdown > 0}
                   onClick={handleSendOtp}
                   className={`hover:underline ${
-                    countdown > 0 ? "opacity-50 cursor-not-allowed" : "text-[#D94B3D] cursor-pointer"
+                    countdown > 0
+                      ? "opacity-50 cursor-not-allowed"
+                      : "text-[#E51919] cursor-pointer"
                   }`}
                 >
                   Resend Code
@@ -381,9 +413,12 @@ export default function LoginPage() {
 
       {/* Register Link */}
       <div className="text-center text-xs sm:text-sm font-bold text-neutral-700 pt-6 mt-6 border-t-2 border-[#171313]">
-        New expedition planner?{" "}
-        <Link href="/register" className="text-[#D94B3D] underline underline-offset-4 hover:text-[#A8322A]">
-          Create a Tripzyy Account
+        New expedition planner or operator?{" "}
+        <Link
+          href="/register"
+          className="text-[#E51919] underline underline-offset-4 hover:text-[#B91C1C]"
+        >
+          Create an Account
         </Link>
       </div>
     </NeoCard>

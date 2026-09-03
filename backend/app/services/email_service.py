@@ -2,6 +2,7 @@
 
 import logging
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid, parseaddr
 
 import aiosmtplib
 import httpx
@@ -105,6 +106,17 @@ class EmailService:
         message["Subject"] = subject
         message["From"] = f"{settings.SMTP_FROM_NAME} <{from_addr}>"
         message["To"] = to
+        # ``Date`` is mandatory under RFC 5322 and ``Message-ID`` is expected by
+        # every receiver worth caring about; Python's EmailMessage sets neither.
+        # A verification mail arriving without them is scored as spam by Gmail
+        # more often than not, which reads to the user as "the code never came".
+        # The Message-ID domain is taken from the sending address so it aligns
+        # with the envelope rather than the local machine's hostname.
+        message["Date"] = formatdate(localtime=True)
+        sender_domain = (parseaddr(from_addr)[1].split("@") + [None])[1]
+        message["Message-ID"] = make_msgid(domain=sender_domain)
+        # So a reply reaches a person rather than bouncing off the relay.
+        message["Reply-To"] = from_addr
         message.set_content(body)
         if html:
             message.add_alternative(html, subtype="html")

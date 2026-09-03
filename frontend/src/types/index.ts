@@ -536,8 +536,17 @@ export interface Trip {
   cover_image_url?: string;
   start_date: string;
   end_date: string;
+  /**
+   * Typed as a number but the API sends a **string**: money is
+   * `Numeric(12,2)` server-side and the response encoder renders every
+   * Decimal as a string so the exact value survives. Coerce with
+   * `Number(...)` before doing arithmetic on it or formatting it —
+   * `budget.toLocaleString()` on the raw value silently returns the
+   * unformatted string.
+   */
   budget: number;
   traveller_count: number;
+  currency?: string;
   status: TripStatus;
   is_shared: boolean;
   share_slug?: string;
@@ -545,7 +554,18 @@ export interface Trip {
   view_count?: number;
   owner?: User;
   cities?: string[];
-  stops: TripStop[];
+  /**
+   * **Only present on the detail endpoint.** `GET /trips` returns
+   * `stop_count` instead and omits this entirely, so every list view must
+   * guard it. It was previously typed as required, which is exactly why a
+   * `trip.stops.length` on the profile page compiled and then crashed.
+   */
+  stops?: TripStop[];
+  /** Counts the list endpoint sends in place of the full relations. */
+  stop_count?: number;
+  activity_count?: number;
+  estimated_cost?: string;
+  duration_days?: number;
   created_at: string;
   updated_at: string;
 }
@@ -988,7 +1008,12 @@ export type NotificationType =
   | "bill_split"
   | "bill_split_settled"
   | "trip_reminder"
-  | "system";
+  | "system"
+  | "change_request"
+  | "change_decision"
+  | "disruption"
+  | "assist_reply"
+  | "review_request";
 
 export interface TripzyyNotification {
   id: string;
@@ -1000,6 +1025,343 @@ export interface TripzyyNotification {
   link?: string | null;
   is_read: boolean;
   created_at: string;
+}
+
+// ─── Dynamic tour management ───────────────
+
+export type ChangeRequestType =
+  | "date_shift"
+  | "replace_component"
+  | "cancel_component"
+  | "add_component"
+  | "party_size";
+
+/**
+ * `approved` and `applied` are deliberately distinct: approval is the
+ * operator's decision, application is the transaction that moves the money and
+ * rewrites the itinerary. `countered` means the operator has offered something
+ * else instead of refusing outright.
+ */
+export type ChangeRequestStatus =
+  | "pending"
+  | "approved"
+  | "countered"
+  | "rejected"
+  | "applied"
+  | "withdrawn";
+
+export type DisruptionType =
+  | "weather"
+  | "vendor_cancellation"
+  | "transport_delay"
+  | "closure"
+  | "safety"
+  | "medical"
+  | "other";
+
+export type DisruptionSeverity = "low" | "medium" | "high" | "critical";
+
+export type DisruptionStatus = "open" | "mitigating" | "resolved" | "dismissed";
+
+export type ConflictSeverity = "info" | "warning" | "blocker";
+
+/** One detected problem. `code` is stable; `message` is written for a human. */
+export interface ItineraryConflict {
+  code: string;
+  severity: ConflictSeverity;
+  message: string;
+  entity?: string | null;
+  entity_id?: string | null;
+  on_date?: string | null;
+  details: Record<string, any>;
+}
+
+/**
+ * Money is a string throughout, exactly as the API sends it — a Numeric(12,2)
+ * through a JS number is how rounding error gets into a refund.
+ */
+export interface ImpactCost {
+  original_total: string;
+  refund_total: string;
+  penalty_total: string;
+  replacement_total: string;
+  net_delta: string;
+  direction: "increase" | "decrease" | "none";
+}
+
+export interface ImpactAffectedItem {
+  item_id: string;
+  title: string;
+  component_type: string;
+  service_date: string;
+  /** What the engine decided to do: reprice, replace or cancel. */
+  action: string;
+  original_cost: string;
+  refund: string;
+  penalty: string;
+  replacement_cost: string;
+  new_date?: string | null;
+  new_service_id?: string | null;
+  new_title?: string | null;
+  note?: string | null;
+}
+
+export interface ImpactAvailability {
+  service_id: string;
+  name: string;
+  on_date: string;
+  available: boolean;
+  seats_left?: number | null;
+  unit_price: string;
+  reason?: string | null;
+}
+
+/**
+ * The deterministic engine's answer. Every figure here traces to a row — a
+ * cancellation policy snapshotted at booking, a published price override, a
+ * capacity count. The AI narration explains this; it never produces it.
+ */
+export interface ImpactReport {
+  change_type: string;
+  currency: string;
+  feasible: boolean;
+  summary: string;
+  cost: ImpactCost;
+  affected_items: ImpactAffectedItem[];
+  conflicts: ItineraryConflict[];
+  availability: ImpactAvailability[];
+  alternatives: ComponentAlternative[];
+  preference_fit?: {
+    score: number;
+    reasons: Record<string, number>;
+    notes: string[];
+  } | null;
+  blockers: string[];
+  generated_at?: string | null;
+}
+
+/** The payload shape varies by change type; the server validates per type. */
+export interface ChangeProposal {
+  shift_days?: number;
+  booking_item_id?: string;
+  new_service_id?: string;
+  new_date?: string;
+  service_id?: string;
+  service_date?: string;
+  stop_id?: string;
+  quantity?: number;
+  units?: number;
+  traveller_count?: number;
+}
+
+export interface AssessChangeResponse {
+  trip_id: string;
+  impact: ImpactReport;
+  ai_summary?: string | null;
+}
+
+export interface ChangeRequest {
+  id: string;
+  trip_id: string;
+  trip_title?: string | null;
+  booking_id?: string | null;
+  booking_item_id?: string | null;
+  booking_item_title?: string | null;
+  operator_id?: string | null;
+  disruption_id?: string | null;
+  disruption_title?: string | null;
+  requested_by_id: string;
+  requested_by_name?: string | null;
+  type: ChangeRequestType;
+  status: ChangeRequestStatus;
+  reason?: string | null;
+  proposal: ChangeProposal;
+  /** Frozen at submission — what the operator is agreeing to, not a live quote. */
+  impact?: ImpactReport | null;
+  ai_summary?: string | null;
+  net_cost_delta: string;
+  currency: string;
+  review_note?: string | null;
+  decided_at?: string | null;
+  applied_at?: string | null;
+  applied_result?: {
+    summary: string;
+    booking_ids: string[];
+    cancelled_item_ids: string[];
+    created_item_ids: string[];
+    refunded: string;
+    charged: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DisruptionAffectedItem {
+  item_id: string;
+  booking_id: string;
+  booking_reference?: string | null;
+  traveller_id?: string | null;
+  title: string;
+  component_type: string;
+  service_date: string;
+  city?: string | null;
+  total_price: string;
+  refund_if_cancelled: string;
+  penalty_if_cancelled: string;
+  recommended_action: "replace" | "review";
+  alternatives: ComponentAlternative[];
+}
+
+/** The operator's exposure, costed when the incident was raised. */
+export interface DisruptionAssessment {
+  severity: DisruptionSeverity;
+  /** True at high/critical: affected components are unusable, not merely at risk. */
+  forcing: boolean;
+  items_at_risk: number;
+  travellers_affected: number;
+  exposure_total: string;
+  refundable_total: string;
+  replacement_total: string;
+  net_if_replaced: string;
+  items: DisruptionAffectedItem[];
+  assessed_at: string;
+}
+
+export interface Disruption {
+  id: string;
+  operator_id?: string | null;
+  trip_id?: string | null;
+  booking_id?: string | null;
+  service_id?: string | null;
+  city?: string | null;
+  from_date?: string | null;
+  to_date?: string | null;
+  type: DisruptionType;
+  severity: DisruptionSeverity;
+  status: DisruptionStatus;
+  title: string;
+  description?: string | null;
+  assessment?: DisruptionAssessment | null;
+  change_request_count: number;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDisruptionPayload {
+  type: DisruptionType;
+  severity: DisruptionSeverity;
+  title: string;
+  description?: string;
+  city?: string;
+  trip_id?: string;
+  booking_id?: string;
+  service_id?: string;
+  from_date?: string;
+  to_date?: string;
+  notify?: boolean;
+}
+
+export interface ConflictCheck {
+  trip_id: string;
+  conflicts: ItineraryConflict[];
+  blockers: number;
+  warnings: number;
+  notes: number;
+}
+
+// ─── Assist & reviews ──────────────────────
+
+export type AssistThreadStatus = "open" | "waiting" | "resolved" | "closed";
+
+/**
+ * Who wrote a message. `ai` is a first-class sender, not a flag on a
+ * coordinator message — a traveller is entitled to know whether a person
+ * answered them, so the UI must always show the difference.
+ */
+export type AssistSender = "traveller" | "coordinator" | "ai";
+
+export interface AssistMessage {
+  id: string;
+  sender: AssistSender;
+  /** Null for the concierge: there is no account behind an AI message. */
+  sender_id?: string | null;
+  sender_name?: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface AssistThread {
+  id: string;
+  trip_id: string;
+  trip_title?: string | null;
+  traveller_id: string;
+  traveller_name?: string | null;
+  booking_id?: string | null;
+  operator_id?: string | null;
+  assigned_member_id?: string | null;
+  assigned_member_name?: string | null;
+  subject: string;
+  status: AssistThreadStatus;
+  message_count: number;
+  last_message_at?: string | null;
+  resolved_at?: string | null;
+  /** Omitted on list endpoints, present on detail. */
+  messages?: AssistMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReviewSubject = "trip" | "vendor" | "service" | "operator";
+
+export interface Review {
+  id: string;
+  author_id: string;
+  author_name?: string | null;
+  author_avatar_url?: string | null;
+  subject: ReviewSubject;
+  target_id: string;
+  trip_id?: string | null;
+  vendor_id?: string | null;
+  service_id?: string | null;
+  operator_id?: string | null;
+  booking_id?: string | null;
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+  /** Backed by a booking the author actually travelled on. */
+  is_verified: boolean;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * `distribution` is carried alongside the average because 4.2 built from
+ * fives and ones means something different from 4.2 built entirely from
+ * fours, and one number cannot say which.
+ */
+export interface RatingSummary {
+  average?: string | null;
+  count: number;
+  distribution: Record<string, number>;
+}
+
+export interface ReviewPage {
+  items: Review[];
+  pagination: Pagination;
+  summary: RatingSummary;
+}
+
+/** Something the traveller went to and has not yet rated. */
+export interface ReviewableItem {
+  subject: ReviewSubject;
+  target_id: string;
+  title: string;
+  vendor_name?: string | null;
+  city?: string | null;
+  service_date: string;
+  booking_reference?: string | null;
 }
 
 // ─── Search Params ─────────────────────────

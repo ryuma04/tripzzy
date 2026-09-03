@@ -14,6 +14,9 @@ import {
   Loader2,
   Plus,
   Search,
+  Siren,
+  Wand2,
+  Headphones,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -25,6 +28,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
+import { OperatorChangeQueue } from "@/components/adaptation/operator-change-queue";
+import { DisruptionBoard } from "@/components/adaptation/disruption-board";
+import { OperatorAssistQueue } from "@/components/engagement/operator-assist-queue";
 import { operatorService } from "@/services/operator";
 import { unwrapItems } from "@/lib/api";
 import type {
@@ -198,6 +204,9 @@ export default function OperatorConsolePage() {
     { id: "customers", label: "Customers", count: customers.length, icon: <Users className="w-4 h-4" /> },
     { id: "vendors", label: "Vendors", count: vendors.length, icon: <Truck className="w-4 h-4" /> },
     { id: "team", label: "Team", count: coordinators.length, icon: <UserCog className="w-4 h-4" /> },
+    { id: "changes", label: "Changes", icon: <Wand2 className="w-4 h-4" /> },
+    { id: "disruptions", label: "Disruptions", icon: <Siren className="w-4 h-4" /> },
+    { id: "assist", label: "Assist", icon: <Headphones className="w-4 h-4" /> },
     { id: "payments", label: "Payments", icon: <Wallet className="w-4 h-4" /> },
   ];
 
@@ -715,6 +724,14 @@ export default function OperatorConsolePage() {
           </NeoCard>
         </div>
       )}
+
+      {/* Both panels own their loading and refresh; `load` is passed so a
+          decision or a new incident updates the console's other numbers. */}
+      {activeTab === "changes" && <OperatorChangeQueue onDecided={load} />}
+
+      {activeTab === "disruptions" && <DisruptionBoard onChanged={load} />}
+
+      {activeTab === "assist" && <OperatorAssistQueue onChanged={load} />}
     </div>
   );
 }

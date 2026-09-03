@@ -25,6 +25,8 @@ import {
   Compass,
   Download,
   FileText,
+  Wand2,
+  Headphones,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -38,6 +40,8 @@ import { ItineraryBuilder } from "@/components/itinerary/itinerary-builder";
 import { ItineraryView } from "@/components/itinerary/itinerary-view";
 import { BudgetOverview } from "@/components/budget/budget-overview";
 import { BookingPanel } from "@/components/booking/booking-panel";
+import { ChangePanel } from "@/components/adaptation/change-panel";
+import { AssistPanel } from "@/components/engagement/assist-panel";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
@@ -67,6 +71,8 @@ export default function TripDetailPage() {
     { id: "itinerary", label: "Itinerary & Stops", count: trip?.stops?.length || 0, icon: <Layers className="w-4 h-4" /> },
     { id: "map", label: "Interactive Route Map", icon: <MapIcon className="w-4 h-4" /> },
     { id: "bookings", label: "Bookings & Payments", icon: <Ticket className="w-4 h-4" /> },
+    { id: "changes", label: "Changes & Disruptions", icon: <Wand2 className="w-4 h-4" /> },
+    { id: "assist", label: "Help & Reviews", icon: <Headphones className="w-4 h-4" /> },
     { id: "budget", label: "Budget & Expenses", icon: <Wallet className="w-4 h-4" /> },
     { id: "overview", label: "Trip Summary", icon: <Compass className="w-4 h-4" /> },
   ];
@@ -395,6 +401,10 @@ export default function TripDetailPage() {
         {activeTab === "timeline" && <ItineraryView trip={trip} />}
 
         {activeTab === "bookings" && <BookingPanel trip={trip} />}
+
+        {activeTab === "changes" && <ChangePanel trip={trip} />}
+
+        {activeTab === "assist" && <AssistPanel trip={trip} />}
 
         {activeTab === "budget" && <BudgetOverview trip={trip} />}
 

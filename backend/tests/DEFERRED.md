@@ -22,13 +22,15 @@ cd backend
 | `tests/test_auth.py` (25) | **passing** — run in full |
 | `tests/test_bookings.py` (13 of ~30) | **partially run.** The pure refund-arithmetic and gateway tests pass. The API tests (quote / pay / cancel) have **not** been run — but the same flows were verified live against the seeded database by hand, including the deposit-then-balance path and both cancellation-policy extremes. |
 | `tests/test_operator.py` (26) | **not run.** Every test needs the database. Collection and imports verified only. The console was exercised live end to end instead — see below. |
+| `tests/test_adaptation.py` (59) | **partially run.** The 33 pure tests -- impact arithmetic, conflict detection, proposal validation, the narration fallback -- were run in full and pass. The 26 database-backed ones have **not** been run; the same flows were driven live instead by `scripts/adaptation_check.py`, 57 assertions, all green. |
+| `tests/test_engagement.py` (32) | **partially run.** The 8 pure tests -- schema bounds, the subject/column mapping, the concierge's offline fallback -- were run in full and pass. The 24 database-backed ones have **not** been run; the same flows were driven live by `scripts/engagement_check.py`, 29 assertions, all green. |
 | Everything else | **not yet run to completion.** Last partial run reached 23% (107 tests) with zero failures before being stopped. |
 
 The two highest-value deferred runs are the newest code, which has no
 full-suite coverage at all:
 
 ```bash
-./.venv/Scripts/python.exe -u -m pytest tests/test_bookings.py tests/test_operator.py -q --tb=short
+./.venv/Scripts/python.exe -u -m pytest tests/test_bookings.py tests/test_operator.py tests/test_adaptation.py tests/test_engagement.py -q --tb=short
 ```
 
 ### What was verified by hand instead
@@ -52,6 +54,23 @@ check used only a single operator's own data.
 Files never yet run end to end in this checkout: `test_admin.py`,
 `test_budget.py`, `test_community.py`, `test_itinerary.py`,
 `test_places_router.py`, `test_search.py`, `test_trips.py`.
+
+`test_itinerary.py` and `test_trips.py` deserve particular attention on the
+full run: Phase 5 hooked the shared conflict engine into all four itinerary
+write paths, so those endpoints now return **more** warnings than they did.
+The two existing assertions only check that warnings are non-empty, so they
+should still pass -- but that is the change most likely to surprise.
+
+**Assist and reviews** -- `scripts/engagement_check.py` drove the loop live:
+a thread opened and routed to the operator; the concierge answered immediately
+and was labelled AI with no author; an AI reply did *not* resolve the thread;
+a bystander was refused (403); the thread reached the operator queue; a
+coordinator's reply claimed it and resolved it; a traveller reply reopened it.
+Then reviews: the booked component appeared as pending, the review was created
+and marked verified against its booking, **the rating the ranker reads actually
+moved**, the public listing carried a distribution, reviewing something never
+booked was refused (403), a duplicate was refused (409), editing someone
+else's was refused (403), and deleting recomputed the aggregate.
 
 `test_trips.py` was run separately earlier and was green apart from
 `test_search_by_title`, which caught a real bug (the `/trips` router never

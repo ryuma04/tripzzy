@@ -290,7 +290,7 @@ export default function ProfilePage() {
                 <div className="flex items-center justify-between mb-2">
                   <Badge status={trip.status} />
                   <span className="text-xs font-bold text-neutral-500">
-                    {trip.stops.length} Stops
+                    {trip.stop_count ?? trip.stops?.length ?? 0} Stops
                   </span>
                 </div>
                 <h4 className="font-display font-extrabold text-lg text-[#111111]">
@@ -306,7 +306,7 @@ export default function ProfilePage() {
 
               <div className="pt-3 border-t-2 border-neutral-100 flex items-center justify-between">
                 <span className="font-display font-extrabold text-sm text-[#111111]">
-                  ₹{trip.budget.toLocaleString("en-IN")}
+                  ₹{Number(trip.budget).toLocaleString("en-IN")}
                 </span>
                 <Link href={`/trips/${trip.id}`}>
                   <NeoButton variant="yellow" size="sm" rightIcon={<Eye className="w-3.5 h-3.5" />}>
@@ -349,7 +349,7 @@ export default function ProfilePage() {
 
               <div className="pt-3 border-t-2 border-neutral-100 flex items-center justify-between">
                 <span className="font-display font-extrabold text-sm text-[#111111]">
-                  ₹{trip.budget.toLocaleString("en-IN")}
+                  ₹{Number(trip.budget).toLocaleString("en-IN")}
                 </span>
                 <Link href={`/trips/${trip.id}`}>
                   <NeoButton variant="white" size="sm" rightIcon={<Eye className="w-3.5 h-3.5" />}>

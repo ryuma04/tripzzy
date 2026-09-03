@@ -110,6 +110,18 @@ class ItineraryService:
                 details={"fields": problems},
             )
 
+    async def _dependency_warnings(self, trip_id: uuid.UUID) -> list[str]:
+        """Advisories about things this edit broke somewhere else.
+
+        The two local checks below only see the rows they were handed. Moving a
+        stop also strands the transfer pointing at it and the hotel booked
+        around it, and those live in other tables -- so the shared conflict
+        engine is asked, rather than a third local check being written here.
+        """
+        from app.services.conflict_service import ConflictService  # noqa: PLC0415
+
+        return await ConflictService(self.db).dependency_warnings(trip_id)
+
     async def _overlap_warnings(
         self, trip_id: uuid.UUID, exclude_stop_id: uuid.UUID | None = None
     ) -> list[str]:
@@ -259,6 +271,7 @@ class ItineraryService:
         await self.db.flush()
 
         warnings = await self._overlap_warnings(trip_id)
+        warnings += await self._dependency_warnings(trip_id)
         await self.db.commit()
         await self.db.refresh(stop, ["activities", "destination"])
         return self.stop_out(stop, include_activities=True), warnings
@@ -314,6 +327,7 @@ class ItineraryService:
             setattr(stop, field, value)
 
         warnings = await self._overlap_warnings(stop.trip_id)
+        warnings += await self._dependency_warnings(stop.trip_id)
         await self.db.commit()
         await self.db.refresh(stop, ["activities"])
         return self.stop_out(stop, include_activities=True), warnings
@@ -440,6 +454,7 @@ class ItineraryService:
         await self.db.flush()
 
         warnings = await self._time_clash_warnings(stop_id, payload.activity_date)
+        warnings += await self._dependency_warnings(stop.trip_id)
         await self.db.commit()
         await self.db.refresh(activity)
         return activity, warnings
@@ -516,6 +531,7 @@ class ItineraryService:
             setattr(activity, field, value)
 
         warnings = await self._time_clash_warnings(stop.id, new_date)
+        warnings += await self._dependency_warnings(stop.trip_id)
         await self.db.commit()
         await self.db.refresh(activity)
         return activity, warnings

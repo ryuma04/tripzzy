@@ -333,3 +333,288 @@ Requirements:
             return self.generate_fallback_two_plans(
                 destinations, start_date, end_date, budget_tier, travel_style, traveller_count
             )
+
+    # -- adaptation narration ------------------------------------------------
+
+    @staticmethod
+    def _impact_fallback(report: dict[str, Any]) -> str:
+        """Explain an impact report without a model.
+
+        Built from the report's own figures, so it is always correct and always
+        available -- which is what lets the narration be genuinely optional.
+        The deterministic engine is the source of truth for every number here
+        whether or not a model is reachable.
+        """
+        cost = report.get("cost", {})
+        currency = report.get("currency", "INR")
+        delta = cost.get("net_delta", "0")
+        direction = cost.get("direction", "none")
+
+        parts = [report.get("summary", "").strip()]
+        if direction == "increase":
+            parts.append(f"You would pay {currency} {delta} more.")
+        elif direction == "decrease":
+            parts.append(f"You would get {currency} {str(delta).lstrip('-')} back.")
+        else:
+            parts.append("The total does not change.")
+
+        penalty = cost.get("penalty_total", "0")
+        if penalty not in ("0", "0.00", None):
+            parts.append(
+                f"{currency} {penalty} is retained under the cancellation terms "
+                f"already agreed."
+            )
+
+        blockers = report.get("blockers") or []
+        if blockers:
+            parts.append("Before this can go ahead: " + " ".join(blockers))
+        elif report.get("conflicts"):
+            parts.append(
+                f"{len(report['conflicts'])} thing(s) in the itinerary would "
+                f"need attention afterwards."
+            )
+
+        alternatives = report.get("alternatives") or []
+        if alternatives:
+            best = alternatives[0]
+            parts.append(
+                f"The best-matching alternative is {best.get('name')} at "
+                f"{currency} {best.get('total_price')}."
+            )
+        return " ".join(p for p in parts if p)
+
+    async def explain_impact(
+        self, report: dict[str, Any], trip_title: str
+    ) -> str:
+        """Turn an impact report into two or three sentences a traveller reads.
+
+        The model is a **narrator, not a calculator**. It is given the figures
+        the adaptation engine computed and told to explain them; it is never
+        asked what a change costs, because a language model guessing at a
+        refund is precisely the failure this architecture is arranged to avoid.
+        Any failure -- no key, a rate limit, a malformed reply -- falls back to
+        the deterministic rendering, which says the same thing less warmly.
+        """
+        if not self.api_key:
+            return self._impact_fallback(report)
+
+        cost = report.get("cost", {})
+        facts = {
+            "trip": trip_title,
+            "change": report.get("change_type"),
+            "currency": report.get("currency"),
+            "engine_summary": report.get("summary"),
+            "original_total": cost.get("original_total"),
+            "refund_total": cost.get("refund_total"),
+            "penalty_total": cost.get("penalty_total"),
+            "replacement_total": cost.get("replacement_total"),
+            "net_delta": cost.get("net_delta"),
+            "direction": cost.get("direction"),
+            "feasible": report.get("feasible"),
+            "blockers": report.get("blockers", []),
+            "conflicts": [c.get("message") for c in report.get("conflicts", [])][:6],
+            "affected": [
+                {
+                    "title": a.get("title"),
+                    "action": a.get("action"),
+                    "from": a.get("service_date"),
+                    "to": a.get("new_date"),
+                    "replacement": a.get("new_title"),
+                }
+                for a in report.get("affected_items", [])
+            ][:8],
+            "alternatives": [
+                {
+                    "name": o.get("name"),
+                    "total_price": o.get("total_price"),
+                    "match_score": o.get("match_score"),
+                }
+                for o in report.get("alternatives", [])
+            ][:3],
+        }
+
+        prompt = (
+            "Explain this travel-booking change to the traveller in 2-4 short "
+            "sentences of plain English.\n\n"
+            "STRICT RULES:\n"
+            "1. Use ONLY the numbers given below. Do not compute, round, "
+            "estimate or invent any figure.\n"
+            "2. Lead with what it costs or saves them, then what breaks, then "
+            "what you would do.\n"
+            "3. No markdown, no bullet points, no headings, no preamble. Prose "
+            "only.\n"
+            "4. If 'feasible' is false or 'blockers' is non-empty, say plainly "
+            "that it cannot go ahead as proposed and why.\n\n"
+            f"FACTS:\n{json.dumps(facts, default=str)}"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You explain travel itinerary changes. You "
+                                    "never calculate; every number you use is "
+                                    "handed to you. You answer in plain prose."
+                                ),
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        # Low temperature: this is an explanation of fixed
+                        # facts, and there is nothing here to be creative about.
+                        "temperature": 0.2,
+                        "max_tokens": 400,
+                    },
+                )
+                if response.status_code == 429:
+                    logger.warning(
+                        "Groq rate limit hit while narrating an impact report; "
+                        "using the deterministic summary. Rotate GROQ_API_KEY "
+                        "if this persists."
+                    )
+                    return self._impact_fallback(report)
+                if response.status_code in (401, 403):
+                    logger.warning(
+                        "Groq rejected the API key (%s) while narrating an "
+                        "impact report; using the deterministic summary. "
+                        "GROQ_API_KEY needs rotating.",
+                        response.status_code,
+                    )
+                    return self._impact_fallback(report)
+                response.raise_for_status()
+
+                content = (
+                    response.json()["choices"][0]["message"]["content"] or ""
+                ).strip()
+                content = re.sub(
+                    r"<think>.*?</think>", "", content, flags=re.DOTALL
+                ).strip()
+                return content or self._impact_fallback(report)
+        except Exception as exc:
+            logger.warning(
+                "Groq narration failed (%s); using the deterministic summary.",
+                exc,
+            )
+            return self._impact_fallback(report)
+
+    # -- assist concierge ----------------------------------------------------
+
+    @staticmethod
+    def _concierge_fallback(facts: dict[str, Any]) -> str:
+        """What to say when the model is unreachable.
+
+        Deliberately does not attempt an answer. It restates what is on file
+        and hands over to a person, because the failure mode this guards
+        against is a confident wrong answer about somebody's accommodation
+        while they are standing outside it.
+        """
+        stops = ", ".join(s.get("city", "") for s in facts.get("stops", []) if s)
+        booked = len(facts.get("booked", []))
+        return (
+            f"I could not reach the assistant just now, so this is what is on "
+            f"file: {facts.get('trip_title')} runs {facts.get('dates')}"
+            + (f" through {stops}" if stops else "")
+            + f", with {booked} component(s) booked. A coordinator has been "
+            "notified and will pick this up."
+        )
+
+    async def answer_traveller(
+        self,
+        *,
+        question: str,
+        facts: dict[str, Any],
+        history: list[dict[str, str]] | None = None,
+    ) -> str | None:
+        """Answer a traveller's question from their own trip data.
+
+        The model is given the trip, the stops and the booked components, and
+        told to answer from those alone. It is explicitly barred from acting:
+        it cannot cancel, rebook or refund, and when a question needs one of
+        those it must say so and leave the thread for a coordinator. Returning
+        ``None`` on failure is intentional — the caller stays silent rather
+        than posting a guess.
+        """
+        if not self.api_key:
+            return self._concierge_fallback(facts)
+
+        conversation = "\n".join(
+            f"{m['sender']}: {m['body']}" for m in (history or [])
+        )
+        prompt = (
+            "A traveller on a tour has asked a question. Answer it from the "
+            "trip data below.\n\n"
+            "RULES:\n"
+            "1. Use ONLY these facts. If the answer is not in them, say you do "
+            "not have that detail and that a coordinator will confirm.\n"
+            "2. You cannot change anything — no cancelling, rebooking, "
+            "refunding or promising. If the question needs that, say a "
+            "coordinator has to action it.\n"
+            "3. Never invent a time, price, address, phone number or booking "
+            "reference.\n"
+            "4. 2-4 sentences, plain prose, no markdown, no bullet points.\n"
+            "5. Be warm and concrete. They may be standing somewhere confused.\n\n"
+            f"TRIP DATA:\n{json.dumps(facts, default=str)}\n\n"
+            + (f"CONVERSATION SO FAR:\n{conversation}\n\n" if conversation else "")
+            + f"QUESTION:\n{question}"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are the Tripzyy concierge. You answer "
+                                    "travellers from their own trip data, you "
+                                    "never invent details, and you never take "
+                                    "actions — a human coordinator does that."
+                                ),
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 400,
+                    },
+                )
+                if response.status_code == 429:
+                    logger.warning(
+                        "Groq rate limit hit answering a traveller; falling "
+                        "back. Rotate GROQ_API_KEY if this persists."
+                    )
+                    return self._concierge_fallback(facts)
+                if response.status_code in (401, 403):
+                    logger.warning(
+                        "Groq rejected the API key (%s) answering a traveller; "
+                        "GROQ_API_KEY needs rotating.",
+                        response.status_code,
+                    )
+                    return self._concierge_fallback(facts)
+                response.raise_for_status()
+
+                content = (
+                    response.json()["choices"][0]["message"]["content"] or ""
+                ).strip()
+                content = re.sub(
+                    r"<think>.*?</think>", "", content, flags=re.DOTALL
+                ).strip()
+                return content or self._concierge_fallback(facts)
+        except Exception as exc:
+            logger.warning("Concierge answer failed (%s); falling back.", exc)
+            return self._concierge_fallback(facts)

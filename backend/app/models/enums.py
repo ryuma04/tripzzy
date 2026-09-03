@@ -230,3 +230,150 @@ class NotificationType(str, Enum):
     BILL_SPLIT_SETTLED = "bill_split_settled"
     TRIP_REMINDER = "trip_reminder"
     SYSTEM = "system"
+    # Adaptation. Kept as three distinct values rather than one "change"
+    # bucket because the three land on different people: the request reaches
+    # the operator, the decision reaches the traveller, and a disruption
+    # reaches everyone whose tour it touches.
+    CHANGE_REQUEST = "change_request"
+    CHANGE_DECISION = "change_decision"
+    DISRUPTION = "disruption"
+    # Assist and review.
+    ASSIST_REPLY = "assist_reply"
+    REVIEW_REQUEST = "review_request"
+
+
+class ChangeRequestType(str, Enum):
+    """What kind of alteration a traveller (or a disruption) is proposing.
+
+    The type decides which arithmetic runs: shifting a date reprices against
+    the new date's availability, replacing a component costs a cancellation
+    plus a new rate, cancelling costs only the cancellation. They are kept
+    apart rather than folded into a generic "edit" because the impact of each
+    is computed differently and explained differently.
+    """
+
+    DATE_SHIFT = "date_shift"
+    REPLACE_COMPONENT = "replace_component"
+    CANCEL_COMPONENT = "cancel_component"
+    ADD_COMPONENT = "add_component"
+    PARTY_SIZE = "party_size"
+
+
+class ChangeRequestStatus(str, Enum):
+    """Where a change stands between being asked for and taking effect.
+
+    ``APPROVED`` and ``APPLIED`` are deliberately separate. Approval is the
+    operator's decision; application is the transaction that moves money and
+    rewrites the itinerary. Collapsing them would leave no way to represent an
+    approved change whose application failed, which is exactly the state
+    somebody has to go and fix.
+
+    ``COUNTERED`` is the operator proposing something else -- the request goes
+    back to the traveller with a different payload rather than being refused
+    outright, which is what actually happens when a hotel is full but its
+    sister property is not.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    COUNTERED = "countered"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    WITHDRAWN = "withdrawn"
+
+
+class DisruptionType(str, Enum):
+    """What went wrong. Drives which components are considered at risk."""
+
+    WEATHER = "weather"
+    VENDOR_CANCELLATION = "vendor_cancellation"
+    TRANSPORT_DELAY = "transport_delay"
+    CLOSURE = "closure"
+    SAFETY = "safety"
+    MEDICAL = "medical"
+    OTHER = "other"
+
+
+class DisruptionSeverity(str, Enum):
+    """How hard the disruption bites.
+
+    ``CRITICAL`` is the threshold at which the engine stops suggesting and
+    starts insisting: affected components are treated as unusable rather than
+    merely risky.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class DisruptionStatus(str, Enum):
+    """An incident's own lifecycle, separate from any change it causes.
+
+    ``MITIGATING`` is the state that earns its keep: it says somebody has
+    raised change requests against this incident but they have not all landed
+    yet, which is the difference between "we know" and "we have handled it".
+    """
+
+    OPEN = "open"
+    MITIGATING = "mitigating"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+
+class ConflictSeverity(str, Enum):
+    """How badly a detected conflict matters.
+
+    Unlike every other enum in this module this one is **not** a database
+    type. Conflicts are computed on read and reported inside an impact report
+    or a warnings list; none is ever stored in a column of its own, so giving
+    it a PostgreSQL type would create something nothing could ever be checked
+    against.
+    """
+
+    INFO = "info"
+    WARNING = "warning"
+    BLOCKER = "blocker"
+
+
+class AssistThreadStatus(str, Enum):
+    """Where a support conversation stands.
+
+    ``WAITING`` means the ball is with the traveller -- staff have answered and
+    are waiting on a reply. Keeping it distinct from ``OPEN`` is what lets a
+    coordinator's queue show only the threads that actually need them, rather
+    than every conversation that has not been closed.
+    """
+
+    OPEN = "open"
+    WAITING = "waiting"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+
+class AssistSender(str, Enum):
+    """Who wrote a message.
+
+    ``AI`` is a first-class sender rather than a flag on a coordinator message.
+    A traveller is entitled to know whether a person answered them, and an
+    answer that only *looks* human is the one thing this feature must not do.
+    """
+
+    TRAVELLER = "traveller"
+    COORDINATOR = "coordinator"
+    AI = "ai"
+
+
+class ReviewSubject(str, Enum):
+    """What is being reviewed.
+
+    Stored explicitly rather than inferred from whichever foreign key is set,
+    so a query for "all vendor reviews" is an index lookup instead of a scan
+    over four nullable columns.
+    """
+
+    TRIP = "trip"
+    VENDOR = "vendor"
+    SERVICE = "service"
+    OPERATOR = "operator"

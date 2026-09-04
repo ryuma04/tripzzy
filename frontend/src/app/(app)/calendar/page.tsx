@@ -10,6 +10,7 @@ import {
   Clock,
   ArrowRight,
   Filter,
+  Loader2,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -18,6 +19,21 @@ import { Modal } from "@/components/ui/modal";
 import { Dropdown } from "@/components/ui/dropdown";
 import { calendarService } from "@/services/calendar";
 import type { CalendarEvent, Trip } from "@/types";
+
+/** Local YYYY-MM-DD from calendar parts.
+ *
+ *  Built from a `Date` rather than by string arithmetic so month overflow
+ *  normalises across the year boundary -- December's "next month" is January
+ *  of the following year, not month 13. `toISOString()` is deliberately not
+ *  used: it converts to UTC first, which shifts the date by a day for anyone
+ *  behind UTC and lands their events on the wrong square.
+ */
+const isoDate = (year: number, monthIndex: number, day: number) => {
+  const d = new Date(year, monthIndex, day);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+};
 
 export default function CalendarPage() {
   const now = new Date();
@@ -28,23 +44,43 @@ export default function CalendarPage() {
   const [viewFilter, setViewFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
 
+  // Refetch whenever the visible month changes.
+  //
+  // This used to fetch once on mount with no date range, which made the
+  // backend apply its own default window of today-30d to today+180d. The
+  // arrows then only changed which month was *drawn* -- they never asked for
+  // its events. So paging back two months, or forward past the six-month
+  // horizon, showed an empty grid for trips that were sitting right there in
+  // the database.
   useEffect(() => {
+    let cancelled = false;
+
     async function loadCalendar() {
       setIsLoading(true);
       try {
-        const res = await calendarService.getCalendar();
+        // A month either side of the visible one: cheap, and it means the
+        // grid is already populated when the user pages to a neighbour.
+        // Day 0 of month N+2 is the last day of month N+1.
+        const start = isoDate(currentYear, currentMonthIndex - 1, 1);
+        const end = isoDate(currentYear, currentMonthIndex + 2, 0);
+
+        const res = await calendarService.getCalendar(start, end);
+        if (cancelled) return;
         if (res.success && res.data) {
           setEvents(res.data.events || []);
         }
       } catch (err) {
         console.error("Failed to load calendar events:", err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     loadCalendar();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentMonthIndex, currentYear]);
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
@@ -77,7 +113,7 @@ export default function CalendarPage() {
   const emptyDays = Array.from({ length: firstDayOfWeek }, (_, i) => i);
 
   const getEventsForDay = (day: number) => {
-    const formattedDate = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const formattedDate = isoDate(currentYear, currentMonthIndex, day);
     return events.filter((ev) => {
       if (viewFilter !== "all" && ev.type !== viewFilter) return false;
       return ev.date === formattedDate;
@@ -142,6 +178,15 @@ export default function CalendarPage() {
 
       {/* ─── Calendar Grid (Wireframe Screen 11 Grid) ─── */}
       <NeoCard className="p-4 md:p-6 bg-[#FFFFFF] overflow-x-auto">
+        {/* `isLoading` was tracked but never shown. Now that paging refetches,
+            an unannounced empty grid reads as "nothing scheduled" rather than
+            "still loading". */}
+        {isLoading && (
+          <div className="flex items-center gap-2 mb-3 text-xs font-bold text-neutral-500">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Loading {monthNames[currentMonthIndex]} {currentYear}...
+          </div>
+        )}
         {/* Days of Week Header */}
         <div className="grid grid-cols-7 gap-2 mb-3 min-w-[700px]">
           {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((day) => (
@@ -165,7 +210,12 @@ export default function CalendarPage() {
 
           {daysArray.map((day) => {
             const dayEvents = getEventsForDay(day);
-            const isToday = day === 22 && currentMonthIndex === 7 && currentYear === 2026;
+            // Was hardcoded to 22 August 2026, so the "today" highlight sat
+            // on a fixed past date and never moved.
+            const isToday =
+              day === now.getDate() &&
+              currentMonthIndex === now.getMonth() &&
+              currentYear === now.getFullYear();
 
             return (
               <div

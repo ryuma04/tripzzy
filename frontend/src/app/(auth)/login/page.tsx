@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Lock,
   Mail,
@@ -24,9 +24,29 @@ import { useToast } from "@/components/ui/toast";
 import { login, requestLoginOtp, loginWithOtp, getRoleRedirectPath } from "@/lib/auth";
 import type { UserRole } from "@/types";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
+
+  // Set by the API client when a request came back 401 with a token
+  // attached, i.e. the session expired rather than the password being wrong.
+  const sessionExpired = searchParams?.get("expired") === "1";
+
+  /**
+   * Where to land after signing in.
+   *
+   * An expired session carries the page the user was thrown off, so they come
+   * back to it rather than to a generic dashboard. Only same-site paths are
+   * honoured -- a `next` of "//evil.example" or "https://..." would otherwise
+   * turn the login form into an open redirect.
+   */
+  const destinationAfterLogin = (fallback: string): string => {
+    const next = searchParams?.get("next");
+    if (!next) return fallback;
+    if (!next.startsWith("/") || next.startsWith("//")) return fallback;
+    return next;
+  };
 
   const [authMode, setAuthMode] = useState<"password" | "otp">("password");
   const [selectedRole, setSelectedRole] = useState<UserRole>("user");
@@ -93,7 +113,7 @@ export default function LoginPage() {
     try {
       const res = await login(email, password, selectedRole);
       if (res.success && res.data) {
-        const dest = getRoleRedirectPath(res.data.user);
+        const dest = destinationAfterLogin(getRoleRedirectPath(res.data.user));
         const roleLabel = res.data.user?.role?.toUpperCase() || "USER";
         showToast(`Signed in successfully as ${roleLabel}!`, "success");
         router.push(dest);
@@ -121,7 +141,7 @@ export default function LoginPage() {
     try {
       const res = await loginWithOtp(email, otp);
       if (res.success && res.data) {
-        const dest = getRoleRedirectPath(res.data.user);
+        const dest = destinationAfterLogin(getRoleRedirectPath(res.data.user));
         const roleLabel = res.data.user?.role?.toUpperCase() || "USER";
         showToast(`OTP verified! Welcome to ${roleLabel} Workspace.`, "success");
         router.push(dest);
@@ -268,6 +288,17 @@ export default function LoginPage() {
           Instant OTP Code
         </button>
       </div>
+
+      {sessionExpired && (
+        <div className="mb-4 p-3 bg-[#FFF4E6] border-2 border-[#D94B3D] rounded-xl shadow-[2px_2px_0px_#D94B3D]">
+          <p className="font-display font-extrabold text-xs text-[#171313]">
+            Your session expired
+          </p>
+          <p className="text-[11px] font-medium text-neutral-700 mt-0.5">
+            Sign in again to pick up where you left off.
+          </p>
+        </div>
+      )}
 
       {/* Mode 1: Password Form */}
       {authMode === "password" && (
@@ -422,5 +453,15 @@ export default function LoginPage() {
         </Link>
       </div>
     </NeoCard>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={<div className="p-8 font-display font-bold">Loading...</div>}
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

@@ -33,6 +33,43 @@ class ApiClient {
     return headers;
   }
 
+  /**
+   * A 401 on a request we *sent a token with* means the session is gone --
+   * expired, or revoked by a logout elsewhere. Left alone it surfaced as a
+   * bare "Invalid or expired token" toast with no way forward, and the dead
+   * token stayed in localStorage so every later call failed the same way.
+   *
+   * Auth endpoints are excluded: a 401 from /auth/login is a wrong password,
+   * not an expired session, and bouncing to the login page would wipe the
+   * error the user needs to read.
+   */
+  private handleExpiredSession(endpoint: string, response: Response): void {
+    if (response.status !== 401) return;
+    if (typeof window === "undefined") return;
+    if (endpoint.startsWith("/auth/")) return;
+    if (!this.getToken()) return;
+
+    try {
+      localStorage.removeItem("tripzyy_token");
+      localStorage.removeItem("tripzyy_user");
+    } catch {
+      // A blocked localStorage must not stop the redirect below.
+    }
+
+    // Already on the login screen: nothing to navigate to.
+    if (window.location.pathname.startsWith("/login")) return;
+    const next = encodeURIComponent(
+      window.location.pathname + window.location.search
+    );
+    // A hard navigation, not router.push: the session is dead, and a full
+    // reload is what guarantees every component holding state derived from
+    // the old session is torn down. This also matches how logout already
+    // leaves the app (see sidebar.tsx). The client is a plain class outside
+    // React, so it has no router to push with in any case.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = `/login?expired=1&next=${next}`;
+  }
+
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     try {
       const data = await response.json();
@@ -69,6 +106,7 @@ class ApiClient {
         method: "GET",
         headers: this.getHeaders(requireAuth),
       });
+      this.handleExpiredSession(endpoint, response);
       return this.handleResponse<T>(response);
     } catch (err: any) {
       return {
@@ -91,6 +129,7 @@ class ApiClient {
         headers: this.getHeaders(requireAuth),
         body: body ? JSON.stringify(body) : undefined,
       });
+      this.handleExpiredSession(endpoint, response);
       return this.handleResponse<T>(response);
     } catch (err: any) {
       return {
@@ -113,6 +152,7 @@ class ApiClient {
         headers: this.getHeaders(requireAuth),
         body: body ? JSON.stringify(body) : undefined,
       });
+      this.handleExpiredSession(endpoint, response);
       return this.handleResponse<T>(response);
     } catch (err: any) {
       return {
@@ -133,6 +173,7 @@ class ApiClient {
         method: "DELETE",
         headers: this.getHeaders(requireAuth),
       });
+      this.handleExpiredSession(endpoint, response);
       return this.handleResponse<T>(response);
     } catch (err: any) {
       return {
@@ -162,6 +203,7 @@ class ApiClient {
         headers,
         body: formData,
       });
+      this.handleExpiredSession(endpoint, response);
       return this.handleResponse<T>(response);
     } catch (err: any) {
       return {

@@ -13,37 +13,37 @@ interface TripzyyLogoProps {
 
 const SIZE_CONFIG: Record<
   string,
-  { iconSize: number; iconClass: string; textClass: string; gapClass: string }
+  { height: number; fullWidth: number; iconWidth: number; heightClass: string }
 > = {
   sm: {
-    iconSize: 28,
-    iconClass: "w-7 h-7",
-    textClass: "text-lg tracking-tight",
-    gapClass: "gap-2",
+    height: 28,
+    fullWidth: 124,
+    iconWidth: 39,
+    heightClass: "h-7",
   },
   md: {
-    iconSize: 36,
-    iconClass: "w-9 h-9",
-    textClass: "text-2xl tracking-tight",
-    gapClass: "gap-2.5",
+    height: 34,
+    fullWidth: 150,
+    iconWidth: 47,
+    heightClass: "h-[34px]",
   },
   sidebar: {
-    iconSize: 36,
-    iconClass: "w-9 h-9",
-    textClass: "text-2xl tracking-tight",
-    gapClass: "gap-2.5",
+    height: 32,
+    fullWidth: 141,
+    iconWidth: 45,
+    heightClass: "h-8",
   },
   lg: {
-    iconSize: 44,
-    iconClass: "w-11 h-11",
-    textClass: "text-3xl tracking-tight",
-    gapClass: "gap-3",
+    height: 42,
+    fullWidth: 186,
+    iconWidth: 59,
+    heightClass: "h-10 sm:h-[42px]",
   },
   xl: {
-    iconSize: 56,
-    iconClass: "w-14 h-14",
-    textClass: "text-4xl sm:text-5xl tracking-tight",
-    gapClass: "gap-3.5",
+    height: 52,
+    fullWidth: 230,
+    iconWidth: 73,
+    heightClass: "h-12 sm:h-[52px]",
   },
 };
 
@@ -55,35 +55,33 @@ export const TripzyyLogo: React.FC<TripzyyLogoProps> = ({
   inverted = false,
 }) => {
   const config = SIZE_CONFIG[size] || SIZE_CONFIG.md;
-  const shouldShowText = variant !== "icon" && showText;
+  const isIconOnly = variant === "icon" || !showText;
+
+  const logoSrc = isIconOnly
+    ? inverted
+      ? "/tripzyy-icon-white.png"
+      : "/tripzyy-icon.png"
+    : inverted
+    ? "/tripzyy-logo-white.png"
+    : "/tripzyy-logo.png";
+
+  const width = isIconOnly ? config.iconWidth : config.fullWidth;
 
   return (
     <div
-      className={`inline-flex items-center ${config.gapClass} select-none group ${className}`}
+      className={`inline-flex items-center select-none group transition-transform hover:scale-[1.02] ${className}`}
     >
-      {/* Official Travel Compass Emblem */}
-      <div className={`relative ${config.iconClass} shrink-0 transition-transform group-hover:scale-105`}>
+      <div className={`relative ${config.heightClass} shrink-0`}>
         <Image
-          src="/tripzyy-icon.svg"
-          alt="Tripzyy Emblem"
-          width={config.iconSize}
-          height={config.iconSize}
-          className="w-full h-full object-contain drop-shadow-xs"
+          src={logoSrc}
+          alt="Tripzyy"
+          width={width}
+          height={config.height}
+          className="h-full w-auto object-contain drop-shadow-xs"
           priority
           unoptimized
         />
       </div>
-
-      {/* Brand Name Typography */}
-      {shouldShowText && (
-        <span
-          className={`font-display font-black leading-none uppercase ${
-            inverted ? "text-white" : "text-[#171313]"
-          } ${config.textClass}`}
-        >
-          Tripzyy
-        </span>
-      )}
     </div>
   );
 };

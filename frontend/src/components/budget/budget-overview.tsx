@@ -156,7 +156,7 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
   return (
     <div className="flex flex-col gap-8">
       {/* ─── Top KPI Summary Cards ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <NeoCard variant="yellow" className="p-6">
           <span className="text-[11px] font-extrabold uppercase tracking-wider text-neutral-800 block mb-1">
             Total Trip Budget
@@ -169,9 +169,31 @@ export const BudgetOverview: React.FC<BudgetOverviewProps> = ({ trip }) => {
           </span>
         </NeoCard>
 
+        {(() => {
+          const plannedCost = Number(trip.estimated_cost || 0);
+          const overBudget = plannedCost > trip.budget;
+          return (
+            <NeoCard variant={overBudget ? "soft-red" : "cream-card"} className="p-6">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-neutral-800 block mb-1">
+                Planned Cost
+              </span>
+              <div className={`font-display font-extrabold text-3xl md:text-4xl ${overBudget ? "text-[#D94B3D]" : "text-[#111111]"}`}>
+                ₹{plannedCost.toLocaleString("en-IN")}
+              </div>
+              <span className="text-xs font-bold text-neutral-700 mt-2 block">
+                {plannedCost > 0
+                  ? overBudget
+                    ? `₹${(plannedCost - trip.budget).toLocaleString("en-IN")} over budget`
+                    : `₹${(trip.budget - plannedCost).toLocaleString("en-IN")} under budget ✓`
+                  : "No components planned yet"}
+              </span>
+            </NeoCard>
+          );
+        })()}
+
         <NeoCard variant="white" className="p-6">
           <span className="text-[11px] font-extrabold uppercase tracking-wider text-neutral-500 block mb-1">
-            Total Recorded Expenses
+            Actual Spend
           </span>
           <div className="font-display font-extrabold text-3xl md:text-4xl text-[#4F7DF9]">
             ₹{totalSpent.toLocaleString("en-IN")}

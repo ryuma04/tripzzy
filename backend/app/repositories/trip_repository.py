@@ -7,7 +7,7 @@ from sqlalchemy import Select, case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import ItineraryActivity, Trip, TripStop
+from app.models import Accommodation, ItineraryActivity, Transport, Trip, TripStop
 from app.models.enums import TripStatus
 
 
@@ -161,8 +161,10 @@ class TripRepository:
     async def stats_for(
         self, trip_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, dict]:
-        """Stop count, activity count and planned cost, in two queries.
+        """Stop count, activity count and comprehensive planned cost.
 
+        Planned cost sums activities, transport legs, and accommodation —
+        everything the traveller has scheduled, not just one slice of it.
         Batched deliberately: doing this per trip inside a list endpoint would
         be a textbook N+1.
         """
@@ -190,6 +192,29 @@ class TripRepository:
             )
         ).all()
 
+        transport_rows = (
+            await self.db.execute(
+                select(
+                    Transport.trip_id,
+                    func.coalesce(func.sum(Transport.cost), 0),
+                )
+                .where(Transport.trip_id.in_(trip_ids))
+                .group_by(Transport.trip_id)
+            )
+        ).all()
+
+        accommodation_rows = (
+            await self.db.execute(
+                select(
+                    TripStop.trip_id,
+                    func.coalesce(func.sum(Accommodation.estimated_cost), 0),
+                )
+                .join(Accommodation, Accommodation.stop_id == TripStop.id)
+                .where(TripStop.trip_id.in_(trip_ids))
+                .group_by(TripStop.trip_id)
+            )
+        ).all()
+
         stats: dict[uuid.UUID, dict] = {
             tid: {"stop_count": 0, "activity_count": 0, "estimated_cost": Decimal("0")}
             for tid in trip_ids
@@ -198,7 +223,11 @@ class TripRepository:
             stats[trip_id]["stop_count"] = count
         for trip_id, count, cost in activity_rows:
             stats[trip_id]["activity_count"] = count
-            stats[trip_id]["estimated_cost"] = Decimal(str(cost))
+            stats[trip_id]["estimated_cost"] += Decimal(str(cost))
+        for trip_id, cost in transport_rows:
+            stats[trip_id]["estimated_cost"] += Decimal(str(cost))
+        for trip_id, cost in accommodation_rows:
+            stats[trip_id]["estimated_cost"] += Decimal(str(cost))
         return stats
 
     async def cities_for(self, trip_id: uuid.UUID) -> list[str]:

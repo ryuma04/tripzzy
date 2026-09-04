@@ -22,11 +22,8 @@ import {
   Map as MapIcon,
   Wallet,
   Ticket,
-  Compass,
   Download,
   FileText,
-  Wand2,
-  Headphones,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -40,8 +37,7 @@ import { ItineraryBuilder } from "@/components/itinerary/itinerary-builder";
 import { ItineraryView } from "@/components/itinerary/itinerary-view";
 import { BudgetOverview } from "@/components/budget/budget-overview";
 import { BookingPanel } from "@/components/booking/booking-panel";
-import { ChangePanel } from "@/components/adaptation/change-panel";
-import { AssistPanel } from "@/components/engagement/assist-panel";
+
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
@@ -71,10 +67,7 @@ export default function TripDetailPage() {
     { id: "itinerary", label: "Itinerary & Stops", count: trip?.stops?.length || 0, icon: <Layers className="w-4 h-4" /> },
     { id: "map", label: "Interactive Route Map", icon: <MapIcon className="w-4 h-4" /> },
     { id: "bookings", label: "Bookings & Payments", icon: <Ticket className="w-4 h-4" /> },
-    { id: "changes", label: "Changes & Disruptions", icon: <Wand2 className="w-4 h-4" /> },
-    { id: "assist", label: "Help & Reviews", icon: <Headphones className="w-4 h-4" /> },
     { id: "budget", label: "Budget & Expenses", icon: <Wallet className="w-4 h-4" /> },
-    { id: "overview", label: "Trip Summary", icon: <Compass className="w-4 h-4" /> },
   ];
 
   useEffect(() => {
@@ -302,6 +295,16 @@ export default function TripDetailPage() {
               <div className="flex items-center gap-1.5 bg-[#FFF4E6] px-2.5 py-1 rounded-lg border border-[#171313]">
                 <span>Budget: ₹{trip.budget.toLocaleString("en-IN")}</span>
               </div>
+              {trip.estimated_cost && Number(trip.estimated_cost) > 0 && (() => {
+                const planned = Number(trip.estimated_cost);
+                const overBudget = planned > trip.budget;
+                return (
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#171313] ${overBudget ? "bg-[#FCA5A5]/30" : "bg-[#B7F4D8]/40"}`}>
+                    <span>Planned: ₹{planned.toLocaleString("en-IN")}</span>
+                    {overBudget && <span className="text-[#D94B3D] font-extrabold text-[10px]">OVER</span>}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -402,9 +405,7 @@ export default function TripDetailPage() {
 
         {activeTab === "bookings" && <BookingPanel trip={trip} />}
 
-        {activeTab === "changes" && <ChangePanel trip={trip} />}
 
-        {activeTab === "assist" && <AssistPanel trip={trip} />}
 
         {activeTab === "budget" && <BudgetOverview trip={trip} />}
 

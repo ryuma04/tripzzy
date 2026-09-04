@@ -30,12 +30,6 @@ export const LandingNavbar: React.FC = () => {
               EXPLORE ROUTES
             </Link>
             <Link
-              href="/community"
-              className="hover:text-[#D94B3D] transition-colors"
-            >
-              COMMUNITY FEED
-            </Link>
-            <Link
               href="/calendar"
               className="hover:text-[#D94B3D] transition-colors"
             >
@@ -111,13 +105,6 @@ export const LandingNavbar: React.FC = () => {
                   className="p-3 bg-[#FFFFFF] border-2 border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:bg-[#FAECDC]"
                 >
                   EXPLORE ROUTES
-                </Link>
-                <Link
-                  href="/community"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-3 bg-[#FFFFFF] border-2 border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:bg-[#FAECDC]"
-                >
-                  COMMUNITY FEED
                 </Link>
                 <Link
                   href="/calendar"

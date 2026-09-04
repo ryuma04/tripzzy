@@ -1,299 +1,360 @@
+// ════════════════════════════════════════════════════════════════
+// TRIPZYY — Shared Trip View
+//
+// This was the "Community Trips" feed: a browse grid of public trips with a
+// preview modal. The feed is gone — it listed whatever happened to be public
+// and its preview showed the same hardcoded three-day itinerary ("Scuba
+// Diving Session", "Beachside Seafood Dinner") for every trip, whatever the
+// destination.
+//
+// What remains is the other half of the route, which is load-bearing: every
+// link "Share Itinerary" hands out is /community?slug=..., and this is what
+// renders it. It now shows the trip's real stops and real activities, and
+// nothing it cannot read from the API.
+// ════════════════════════════════════════════════════════════════
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   Users,
   Copy,
-  ArrowRight,
-  Sparkles,
   Calendar,
   MapPin,
-  Eye,
-  Check,
   Compass,
+  Wallet,
+  Loader2,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
-import { SearchBar } from "@/components/ui/search-bar";
 import { Avatar } from "@/components/ui/avatar";
-import { Modal } from "@/components/ui/modal";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
 import { communityService } from "@/services/community";
-import type { CommunityTrip, Trip } from "@/types";
 
-function CommunityContent() {
+/** The shape `/public/trips/{slug}` actually returns. */
+interface SharedActivity {
+  id: string;
+  title: string;
+  description?: string | null;
+  activity_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  estimated_cost?: string | number | null;
+}
+
+interface SharedStop {
+  id: string;
+  city_name: string;
+  country?: string | null;
+  arrival_date: string;
+  departure_date: string;
+  nights?: number;
+  activities?: SharedActivity[];
+}
+
+interface SharedTrip {
+  id: string;
+  share_slug?: string | null;
+  title: string;
+  description?: string | null;
+  start_date: string;
+  end_date: string;
+  duration_days?: number;
+  budget?: string | number | null;
+  estimated_cost?: string | number | null;
+  traveller_count: number;
+  currency?: string;
+  cities?: string[];
+  stops?: SharedStop[];
+  owner?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    avatar_url?: string | null;
+  };
+  viewer?: {
+    is_authenticated: boolean;
+    is_owner: boolean;
+    can_clone: boolean;
+  };
+}
+
+const money = (v: string | number | null | undefined) =>
+  Number(v ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+
+function SharedTripContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const querySlug = searchParams?.get("slug");
+  const slug = searchParams?.get("slug");
   const { showToast } = useToast();
 
-  const [communityTrips, setCommunityTrips] = useState<CommunityTrip[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPreviewTrip, setSelectedPreviewTrip] = useState<CommunityTrip | null>(null);
+  const [trip, setTrip] = useState<SharedTrip | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(slug));
+  const [error, setError] = useState<string | null>(null);
   const [isCloning, setIsCloning] = useState(false);
 
   useEffect(() => {
-    async function loadCommunityFeed() {
-      setIsLoading(true);
-      try {
-        const res = await communityService.getTrips(1, 30);
-        if (res.success && res.data) {
-          const items = Array.isArray(res.data)
-            ? res.data
-            : (res.data as any).items || [];
-          setCommunityTrips(items);
-        }
-      } catch (err) {
-        console.error("Failed to load community trips:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
+    // No setState needed on this branch: `isLoading` is initialised from
+    // `Boolean(slug)`, so it is already false when there is nothing to fetch.
+    if (!slug) return;
+    let cancelled = false;
 
-    loadCommunityFeed();
-  }, []);
-
-  // Handle direct shared URL link preview (?slug=...)
-  useEffect(() => {
-    if (querySlug) {
-      communityService.getPublicTrip(querySlug).then((res) => {
+    communityService
+      .getPublicTrip(slug)
+      .then((res) => {
+        if (cancelled) return;
         if (res.success && res.data) {
-          const t = res.data;
-          const commTrip: CommunityTrip = {
-            id: t.id,
-            share_slug: t.share_slug || querySlug,
-            title: t.title,
-            description: t.description,
-            start_date: t.start_date,
-            end_date: t.end_date,
-            duration_days: Math.max(1, Math.ceil((new Date(t.end_date).getTime() - new Date(t.start_date).getTime()) / (1000 * 3600 * 24))),
-            budget: t.budget,
-            estimated_cost: t.budget || 0,
-            traveller_count: t.traveller_count,
-            currency: "INR",
-            cover_image_url: t.cover_image,
-            stop_count: t.stops?.length || 0,
-            activity_count: t.stops?.reduce((acc: number, s: any) => acc + (s.activities?.length || 0), 0) || 0,
-            cities: t.stops?.map((s) => s.destination?.city || s.destination?.name || "Stop") || [],
-            owner: {
-              id: t.owner?.id || "00000000-0000-0000-0000-000000000000",
-              first_name: t.owner?.first_name || "Community",
-              last_name: t.owner?.last_name || "Explorer",
-              avatar_url: t.owner?.avatar_url,
-            },
-            created_at: t.created_at,
-          };
-          setSelectedPreviewTrip(commTrip);
+          setTrip(res.data as unknown as SharedTrip);
+        } else {
+          setError(res.message || "That shared trip could not be found.");
         }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not reach the Tripzyy API.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
-    }
-  }, [querySlug]);
 
-  const filteredCommunityTrips = communityTrips.filter((t) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      t.title.toLowerCase().includes(q) ||
-      t.cities?.some((d: string) => d.toLowerCase().includes(q)) ||
-      `${t.owner?.first_name} ${t.owner?.last_name}`.toLowerCase().includes(q)
-    );
-  });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
-  const handleCloneTrip = async (trip: CommunityTrip) => {
+  const handleClone = async () => {
+    if (!trip || !slug) return;
     setIsCloning(true);
     try {
-      const slug = trip.share_slug || trip.id;
       const res = await communityService.cloneTrip(slug);
       if (res.success && res.data) {
-        showToast(
-          `Cloned "${trip.title}" into your expeditions as an editable trip!`,
-          "success"
-        );
-        setSelectedPreviewTrip(null);
+        showToast(`Cloned "${trip.title}" into your trips.`, "success");
         router.push(`/trips/${res.data.id}`);
-      } else {
-        showToast(res.message || "Failed to clone itinerary.", "error");
+        return;
       }
-    } catch (err: any) {
-      showToast(err.message || "Failed to clone itinerary.", "error");
+      // A 401 here means the stored session has expired, which used to
+      // surface as a bare "Invalid or expired token" with no way forward.
+      if (res.error?.code === "UNAUTHORIZED") {
+        showToast("Your session has expired. Please sign in again.", "error");
+        router.push("/login");
+        return;
+      }
+      showToast(res.message || "Could not clone this trip.", "error");
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Could not clone this trip.",
+        "error"
+      );
     } finally {
       setIsCloning(false);
     }
   };
 
+  if (!slug) {
+    return (
+      <div className="flex flex-col gap-8">
+        <SectionHeader
+          tag="Shared Trip"
+          tagColor="red"
+          title="Shared Trip"
+          subtitle="Open a Tripzyy share link to view someone's itinerary here."
+        />
+        <EmptyState
+          icon={<Compass className="w-10 h-10 text-[#111111]" />}
+          title="No trip in this link"
+          description="This page shows a trip someone shared with you. Ask them for the link, or plan your own."
+          action={
+            <Link href="/trips/new">
+              <NeoButton variant="primary" size="sm">
+                Plan a trip
+              </NeoButton>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm font-semibold text-neutral-500">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading the shared trip...
+      </div>
+    );
+  }
+
+  if (error || !trip) {
+    return (
+      <div className="flex flex-col gap-8">
+        <SectionHeader tag="Shared Trip" tagColor="red" title="Shared Trip" />
+        <EmptyState
+          icon={<Compass className="w-10 h-10 text-[#111111]" />}
+          title="This trip is not available"
+          description={
+            error ||
+            "The link may have expired, or the owner may have stopped sharing it."
+          }
+          action={
+            <Link href="/trips">
+              <NeoButton variant="primary" size="sm">
+                Back to my trips
+              </NeoButton>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const stops = trip.stops || [];
+  const owner = trip.owner;
+  const canClone = trip.viewer?.can_clone ?? true;
+
   return (
-    <div className="flex flex-col gap-8">
-      {/* ─── Page Header ─── */}
+    <div className="flex flex-col gap-6 max-w-4xl">
       <SectionHeader
-        tag="Shared Feed"
+        tag="Shared Trip"
         tagColor="red"
-        title="Community Expeditions"
-        subtitle="Discover curated public travel routes designed by other explorers and clone them directly to your workspace."
+        title={trip.title}
+        subtitle={trip.description || undefined}
       />
 
-      {/* ─── Search Bar (Wireframe Screen 10 Header) ─── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#FFFFFF] p-4 rounded-2xl border-[3px] border-[#171313] shadow-[4px_4px_0px_#171313]">
-        <div className="flex-1 max-w-lg">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search by circuit, city, or creator..."
-          />
-        </div>
-        <span className="text-xs font-bold text-neutral-600">
-          Showing {filteredCommunityTrips.length} Shared Trips
-        </span>
-      </div>
-
-      {/* ─── Community Trip Cards Grid (Wireframe Screen 10 Cards) ─── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredCommunityTrips.map((trip) => (
-          <NeoCard key={trip.id} className="p-6 flex flex-col justify-between gap-5 bg-[#FFFFFF]">
+      {/* Owner + headline figures */}
+      <NeoCard className="p-6 bg-[#FFFFFF] flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b-2 border-[#171313]">
+          <div className="flex items-center gap-2.5">
+            <Avatar
+              src={owner?.avatar_url || undefined}
+              name={`${owner?.first_name || "Tripzyy"} ${owner?.last_name || "Traveller"}`}
+              size="sm"
+            />
             <div>
-              {/* Creator Info Header */}
-              <div className="flex items-center justify-between pb-3 border-b-2 border-neutral-100 mb-3">
-                <div className="flex items-center gap-2.5">
-                  <Avatar
-                    src={trip.owner?.avatar_url}
-                    name={`${trip.owner?.first_name || 'Anonymous'} ${trip.owner?.last_name || ''}`}
-                    size="sm"
-                  />
-                  <div>
-                    <h5 className="font-display font-extrabold text-xs text-[#111111]">
-                      {trip.owner?.first_name || 'Anonymous'} {trip.owner?.last_name || ''}
-                    </h5>
-                    <span className="text-[10px] text-neutral-500 font-medium">
-                      Published {new Date(trip.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-[#FFD54A] border border-[#111111]">
-                  Verified Route
-                </span>
-              </div>
-
-              {/* Trip Title & Route */}
-              <h3 className="font-display font-extrabold text-xl text-[#111111] leading-snug mb-2">
-                {trip.title}
-              </h3>
-
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#4F7DF9] mb-4">
-                <MapPin className="w-3.5 h-3.5" />
-                <span>{(trip.cities || []).join(" → ") || "No route specified"}</span>
-              </div>
-
-              {/* Meta Badges */}
-              <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-neutral-700">
-                <div className="flex items-center gap-1.5 bg-neutral-50 px-2.5 py-1 rounded-lg border border-[#111111]/15">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>
-                    {trip.start_date} to {trip.end_date}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 bg-neutral-50 px-2.5 py-1 rounded-lg border border-[#111111]/15">
-                  <Users className="w-3.5 h-3.5" />
-                  <span>{trip.traveller_count} Travelers</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Actions: View & Clone */}
-            <div className="flex items-center justify-between pt-3 border-t-2 border-neutral-100">
-              <NeoButton
-                variant="white"
-                size="sm"
-                leftIcon={<Eye className="w-4 h-4" />}
-                onClick={() => setSelectedPreviewTrip(trip)}
-              >
-                View Itinerary
-              </NeoButton>
-
-              <NeoButton
-                variant="yellow"
-                size="sm"
-                leftIcon={<Copy className="w-4 h-4" />}
-                onClick={() => handleCloneTrip(trip)}
-              >
-                Clone Trip
-              </NeoButton>
-            </div>
-          </NeoCard>
-        ))}
-      </div>
-
-      {/* ─── Trip Preview Modal ─── */}
-      {selectedPreviewTrip && (
-        <Modal
-          isOpen={!!selectedPreviewTrip}
-          onClose={() => setSelectedPreviewTrip(null)}
-          title={selectedPreviewTrip.title}
-          subtitle={`Published by ${selectedPreviewTrip.owner?.first_name} ${selectedPreviewTrip.owner?.last_name}`}
-          maxWidth="lg"
-        >
-          <div className="flex flex-col gap-5">
-            <div className="p-4 bg-neutral-50 border-2 border-[#111111] rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs font-bold">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#4F7DF9]" />
-                <span>Stops: {(selectedPreviewTrip.cities || []).join(" → ")}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  {selectedPreviewTrip.start_date} → {selectedPreviewTrip.end_date}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <h5 className="font-display font-extrabold text-xs uppercase tracking-wider text-[#111111]">
-                Sample Itinerary Breakdown
+              <h5 className="font-display font-extrabold text-xs text-[#111111]">
+                {owner?.first_name || "A Tripzyy traveller"} {owner?.last_name || ""}
               </h5>
-              <div className="p-3 bg-white border-2 border-[#111111] rounded-xl text-xs flex flex-col gap-2">
-                <div className="font-bold text-[#111111]">
-                  Day 1: Arrival, Heritage Harbor Walk & Evening Sunset
-                </div>
-                <div className="font-bold text-[#111111]">
-                  Day 2: Scuba Diving Session & Beachside Seafood Dinner
-                </div>
-                <div className="font-bold text-[#111111]">
-                  Day 3: Scenic Cliffside Trek & Temple Visit
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2 border-t-2 border-neutral-100">
-              <NeoButton
-                variant="white"
-                size="sm"
-                onClick={() => setSelectedPreviewTrip(null)}
-              >
-                Close
-              </NeoButton>
-              <NeoButton
-                variant="yellow"
-                size="md"
-                isLoading={isCloning}
-                leftIcon={<Copy className="w-4 h-4" />}
-                onClick={() => handleCloneTrip(selectedPreviewTrip)}
-              >
-                Clone into My Account
-              </NeoButton>
+              <span className="text-[10px] text-neutral-500 font-medium">
+                shared this itinerary
+              </span>
             </div>
           </div>
-        </Modal>
+
+          {canClone && (
+            <NeoButton
+              variant="yellow"
+              size="sm"
+              isLoading={isCloning}
+              leftIcon={<Copy className="w-4 h-4" />}
+              onClick={handleClone}
+            >
+              Clone into my trips
+            </NeoButton>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-bold text-neutral-700">
+          <div className="flex items-center gap-2 bg-neutral-50 px-3 py-2 rounded-lg border-2 border-[#171313]">
+            <Calendar className="w-4 h-4 shrink-0" />
+            <span>
+              {trip.start_date} → {trip.end_date}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 bg-neutral-50 px-3 py-2 rounded-lg border-2 border-[#171313]">
+            <Users className="w-4 h-4 shrink-0" />
+            <span>
+              {trip.traveller_count}{" "}
+              {trip.traveller_count === 1 ? "traveller" : "travellers"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 bg-neutral-50 px-3 py-2 rounded-lg border-2 border-[#171313]">
+            <Wallet className="w-4 h-4 shrink-0" />
+            <span>
+              {trip.currency || "INR"} {money(trip.budget)}
+            </span>
+          </div>
+        </div>
+
+        {(trip.cities || []).length > 0 && (
+          <div className="flex items-center gap-2 text-xs font-bold text-[#D94B3D]">
+            <MapPin className="w-4 h-4 shrink-0" />
+            <span>{(trip.cities || []).join(" → ")}</span>
+          </div>
+        )}
+      </NeoCard>
+
+      {/* The actual itinerary. Only what the trip really contains -- this is
+          where a hardcoded sample used to sit. */}
+      {stops.length === 0 ? (
+        <NeoCard className="p-6 bg-[#FFF4E6] border-dashed">
+          <p className="font-display font-extrabold text-sm text-[#171313]">
+            This trip has no stops yet.
+          </p>
+        </NeoCard>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {stops.map((stop, idx) => {
+            const activities = stop.activities || [];
+            return (
+              <NeoCard key={stop.id} className="p-5 bg-[#FFFFFF] flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b-2 border-[#171313]">
+                  <span className="font-display font-extrabold text-sm text-[#171313] flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-[#D94B3D]" />
+                    Stop {idx + 1}: {stop.city_name}
+                    {stop.country ? `, ${stop.country}` : ""}
+                  </span>
+                  <span className="text-[11px] font-semibold text-neutral-500">
+                    {stop.arrival_date} → {stop.departure_date}
+                  </span>
+                </div>
+
+                {activities.length === 0 ? (
+                  <p className="text-xs font-semibold text-neutral-500">
+                    No activities planned for this stop.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {activities.map((act) => (
+                      <div
+                        key={act.id}
+                        className="p-2.5 bg-neutral-50 border-2 border-[#171313] rounded-lg flex items-start justify-between gap-3"
+                      >
+                        <div>
+                          <div className="font-display font-bold text-xs text-[#171313]">
+                            {act.title}
+                          </div>
+                          <div className="text-[11px] text-neutral-600 mt-0.5">
+                            {act.activity_date}
+                            {act.start_time ? ` · ${act.start_time}` : ""}
+                            {act.description ? ` — ${act.description}` : ""}
+                          </div>
+                        </div>
+                        <span className="font-display font-extrabold text-xs text-[#171313] shrink-0">
+                          ₹{money(act.estimated_cost)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </NeoCard>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-export default function CommunityPage() {
+export default function SharedTripPage() {
   return (
-    <Suspense fallback={<div className="p-8 font-display font-bold">Loading community feed...</div>}>
-      <CommunityContent />
+    <Suspense
+      fallback={
+        <div className="p-8 font-display font-bold">Loading shared trip...</div>
+      }
+    >
+      <SharedTripContent />
     </Suspense>
   );
 }

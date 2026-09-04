@@ -436,6 +436,8 @@ export interface Booking {
   total: string;
   amount_paid: string;
   amount_outstanding: string;
+  /** Penalties kept from cancelled components. Included in `total`. */
+  cancellation_fees?: string;
   notes?: string | null;
   placed_at?: string | null;
   confirmed_at?: string | null;

@@ -41,10 +41,12 @@ import { CheckoutModal } from "@/components/booking/checkout-modal";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
+import { bookingService } from "@/services/bookings";
+import { unwrapItems } from "@/lib/api";
 import { generateTripReportPDF } from "@/lib/report-generator";
 import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from "@/lib/demo-data";
 import { DEMO_MODE, noteDemoFallback } from "@/lib/demo-mode";
-import type { Trip, Expense } from "@/types";
+import type { Trip, Expense, Booking } from "@/types";
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -63,6 +65,13 @@ export default function TripDetailPage() {
   const [isDownloadingReport, setIsDownloadingReport] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
   const [selectedMapStopId, setSelectedMapStopId] = useState<string | undefined>(undefined);
+  const [committedBookings, setCommittedBookings] = useState<Booking[]>([]);
+
+  // A trip carrying live bookings is not the traveller's alone to delete:
+  // deleting it soft-deletes the trip, every route 404s, and the reference
+  // codes and cancellation flow for a tour they have already paid for go with
+  // it. The API refuses this too — this is so the button says so first.
+  const hasCommittedBookings = committedBookings.length > 0;
 
   const tabs = [
     { id: "itinerary", label: "Itinerary & Stops", count: trip?.stops?.length || 0, icon: <Layers className="w-4 h-4" /> },
@@ -107,8 +116,27 @@ export default function TripDetailPage() {
       }
     }
 
+    async function loadCommittedBookings() {
+      try {
+        const res = await bookingService.list({ limit: 50 });
+        if (res.success) {
+          setCommittedBookings(
+            unwrapItems<Booking>(res.data).filter(
+              (b) =>
+                b.trip_id === tripId &&
+                ["pending_payment", "confirmed", "in_progress"].includes(b.status)
+            )
+          );
+        }
+      } catch {
+        // Not knowing about bookings must not break the page; the API still
+        // refuses the delete on its own.
+      }
+    }
+
     if (tripId) {
       loadTripDetail();
+      loadCommittedBookings();
     }
   }, [tripId]);
 
@@ -256,6 +284,14 @@ export default function TripDetailPage() {
             variant="white"
             size="sm"
             leftIcon={<Trash2 className="w-3.5 h-3.5 text-red-600" />}
+            disabled={hasCommittedBookings}
+            title={
+              hasCommittedBookings
+                ? `Cannot delete: ${committedBookings
+                    .map((b) => b.reference)
+                    .join(", ")} still active. Cancel and settle the booking first.`
+                : undefined
+            }
             onClick={() => setIsDeleteModalOpen(true)}
           >
             Delete
@@ -560,7 +596,11 @@ export default function TripDetailPage() {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDeleteTrip}
         title="Delete Trip"
-        message={`Are you sure you want to permanently delete "${trip.title}"? All associated stops, activities and recorded expenses will be removed.`}
+        message={`Are you sure you want to permanently delete "${trip.title}"? All associated stops, activities and recorded expenses will be removed.${
+          hasCommittedBookings
+            ? " This trip has active bookings, so the server will refuse: cancel them on the Bookings tab first."
+            : ""
+        }`}
         confirmLabel="Yes, Delete Trip"
       />
 

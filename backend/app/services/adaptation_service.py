@@ -76,7 +76,9 @@ from app.services.booking_service import (
     MONEY,
     ZERO,
     BookingService,
+    record_penalty,
     refund_due,
+    refundable_cash,
 )
 from app.services.conflict_service import Conflict, ConflictService, _ordered
 from app.services.inventory_service import InventoryService
@@ -1170,16 +1172,21 @@ class AdaptationService:
     async def _refund_item(self, item: BookingItem, booking: Booking) -> Decimal:
         """Cancel one item and record whatever refund its terms produce.
 
-        Capped at what has actually been paid: a booking still on deposit
-        cannot refund more money than it has received, and a gateway that
-        returned more than it took would be a bug worth an incident.
+        Capped at what has actually been paid *after the penalty comes out of
+        it*: a booking still on deposit cannot refund more money than it has
+        received, and taking the penalty off the catalogue price rather than
+        off the cash handed a deposit straight back on a penalised
+        cancellation. A gateway that returned more than it took would be a bug
+        worth an incident.
         """
-        refund, _, _ = refund_due(item)
+        refund, penalty, _ = refund_due(item)
         item.status = BookingItemStatus.CANCELLED
+        paid = BookingService.amount_paid(booking)
+        if paid > 0:
+            record_penalty(item, penalty)
         await self._release(item)
 
-        paid = BookingService.amount_paid(booking)
-        refundable = min(refund, paid).quantize(MONEY)
+        refundable = refundable_cash(paid, refund, penalty)
         if refundable <= 0:
             return ZERO
 

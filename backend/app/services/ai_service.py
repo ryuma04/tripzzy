@@ -30,8 +30,16 @@ class AIService:
         travel_style: str,
         traveller_count: int,
     ) -> dict[str, Any]:
-        """Realistic structured fallback plans if external AI API is unreachable."""
-        dest_name = destinations[0] if destinations else "Goa"
+        """Structured fallback plans if the external AI API is unreachable.
+
+        Deliberately generic. An earlier version described beach shacks,
+        coastal walks and snorkelling for whatever destination it was handed,
+        which produced a seafront itinerary for Amritsar. A fallback that
+        cannot know the place must not pretend to: it names the destination
+        and the shape of the day, and claims nothing about what is there.
+        """
+        named = [d for d in (destinations or []) if d and d.strip()]
+        dest_name = named[0] if named else "your destination"
 
         # Calculate duration
         try:
@@ -60,9 +68,9 @@ class AIService:
                 "food": round(budget_cost * 0.18),
             },
             "daily_budget": round(budget_cost / diff),
-            "advantages": "Maximum sights with minimal spending, authentic regional cafes, scenic trains, and verified homestays.",
-            "tradeoffs": "Standard AC local transport and boutique homestays instead of 5-star beachfront resorts.",
-            "why_cheaper": f"Saves ₹{int(premium_cost - budget_cost):,} by utilizing verified community homestays, public/shared rentals, and group-pass rates.",
+            "advantages": "Maximum sights with minimal spending, local eateries, public transit, and verified budget stays.",
+            "tradeoffs": "Standard local transport and guesthouses instead of 5-star hotels.",
+            "why_cheaper": f"Saves ₹{int(premium_cost - budget_cost):,} by using verified guesthouses, public or shared transport, and group-pass rates.",
             "stops": [
                 {
                     "destination_name": d,
@@ -70,32 +78,32 @@ class AIService:
                     "departure_date": end_date,
                     "activities": [
                         {
-                            "title": f"{d} Heritage Walk & Sunset Viewpoint",
+                            "title": f"{d} Heritage Walk",
                             "date": start_date,
                             "start_time": "16:00",
                             "end_time": "18:30",
                             "estimated_cost": 350.0,
-                            "notes": "Scenic coastal walk with local cutting chai stops.",
+                            "notes": "A guided walk through the main sights, at your own pace.",
                         },
                         {
-                            "title": f"Famous {d} Street Food & Bazaars Tour",
+                            "title": f"{d} Street Food & Bazaars Tour",
                             "date": start_date,
                             "start_time": "19:00",
                             "end_time": "21:30",
                             "estimated_cost": 450.0,
-                            "notes": "Curated trail exploring authentic regional street food.",
+                            "notes": "A trail through the local markets and regional food.",
                         },
                     ],
                 }
-                for d in (destinations or ["Goa"])
+                for d in (named or [dest_name])
             ],
         }
 
         premium_plan = {
             "plan_type": "PREMIUM",
             "badge": "✨ PREMIUM EXPERIENCE",
-            "title": f"{dest_name} Luxury Retreat & Curated Adventures",
-            "description": f"Curated deluxe experience for {traveller_count} travellers featuring 4-star beachside resorts, private dedicated AC transfers, VIP guided tours, and fine dining.",
+            "title": f"{dest_name} Premium Stay & Guided Experiences",
+            "description": f"Curated deluxe experience for {traveller_count} travellers featuring 4-star hotels, private AC transfers, guided tours, and fine dining.",
             "total_cost": premium_cost,
             "currency": "INR",
             "duration_days": diff,
@@ -106,9 +114,9 @@ class AIService:
                 "food": round(premium_cost * 0.16),
             },
             "daily_budget": round(premium_cost / diff),
-            "advantages": "Dedicated private AC chauffeur throughout, premium 4-star pool resorts, private boat charter, and curated sunset fine dining.",
+            "advantages": "Dedicated private AC chauffeur throughout, premium 4-star hotels, private guides, and curated fine dining.",
             "tradeoffs": "Higher overall budget allocation.",
-            "why_more": "Private beachfront villa stays, fast direct transfers, all-inclusive guided adventure passes, and chef-curated tastings.",
+            "why_more": "Premium stays, direct private transfers, all-inclusive guided passes, and chef-curated tastings.",
             "stops": [
                 {
                     "destination_name": d,
@@ -116,24 +124,24 @@ class AIService:
                     "departure_date": end_date,
                     "activities": [
                         {
-                            "title": f"VIP Guided {d} Private Boat & Snorkeling Tour",
+                            "title": f"Private Guided Tour of {d}",
                             "date": start_date,
                             "start_time": "08:00",
                             "end_time": "13:00",
                             "estimated_cost": 2800.0,
-                            "notes": "Private charter with certified instructors and underwater photography.",
+                            "notes": "A private guide for the day, at the destination's main sights.",
                         },
                         {
-                            "title": f"Exclusive Cliffside Sunset Fine-Dining & Wine Tasting",
+                            "title": f"{d} Fine-Dining Evening",
                             "date": start_date,
                             "start_time": "18:30",
                             "end_time": "21:30",
                             "estimated_cost": 2200.0,
-                            "notes": "Reserved oceanfront table with 4-course curated dinner.",
+                            "notes": "A reserved table for a four-course curated dinner.",
                         },
                     ],
                 }
-                for d in (destinations or ["Goa"])
+                for d in (named or [dest_name])
             ],
         }
 
@@ -159,6 +167,66 @@ class AIService:
         if budget_tier.lower() in {"luxury", "premium"}:
             return options.get("premium_plan", options.get("budget_plan"))
         return options.get("budget_plan", options.get("premium_plan"))
+
+    @staticmethod
+    def _constrain_to_destinations(
+        plan: dict[str, Any] | None, destinations: list[str]
+    ) -> dict[str, Any] | None:
+        """Drop any stop the caller did not ask for.
+
+        The prompt states the constraint, but a prompt is a request, not a
+        guarantee: a model asked for Amritsar will still reach for the Taj
+        Mahal if it thinks the itinerary looks thin. Stops are matched against
+        the requested names and anything else is discarded, so an unrequested
+        city cannot reach the traveller no matter what came back.
+        """
+        if not plan or not destinations:
+            return plan
+
+        wanted = [d.strip().lower() for d in destinations if d and d.strip()]
+        if not wanted:
+            return plan
+
+        stops = plan.get("stops")
+        if not isinstance(stops, list):
+            return plan
+
+        kept = [
+            stop
+            for stop in stops
+            if isinstance(stop, dict)
+            and any(
+                name in str(stop.get("destination_name", "")).strip().lower()
+                for name in wanted
+            )
+        ]
+        # An empty result means the model ignored the brief entirely; the
+        # caller treats that as a failed generation rather than shipping it.
+        if not kept:
+            return None
+
+        plan["stops"] = kept
+        return plan
+
+    def _constrain_options(
+        self, result: dict[str, Any], destinations: list[str], **fallback_args
+    ) -> dict[str, Any]:
+        """Apply the destination constraint to both plans, filling any gap."""
+        fallback: dict[str, Any] | None = None
+        for key in ("budget_plan", "premium_plan"):
+            constrained = self._constrain_to_destinations(result.get(key), destinations)
+            if constrained is None:
+                if fallback is None:
+                    fallback = self.generate_fallback_two_plans(
+                        destinations, **fallback_args
+                    )
+                logger.warning(
+                    "AI %s ignored the destination constraint; using the fallback.",
+                    key,
+                )
+                constrained = fallback[key]
+            result[key] = constrained
+        return result
 
     async def generate_two_itinerary_options(
         self,
@@ -188,6 +256,8 @@ You are an expert travel planner for Tripzyy. Generate EXACTLY TWO DISTINCT trav
 - Travel Style: {travel_style}
 - Number of Travellers: {traveller_count}
 
+HARD CONSTRAINT: every stop and every activity MUST be located in the destinations listed above. Do NOT include attractions from any other city, however famous. If you cannot fill a day with real attractions from the listed destinations, return fewer activities rather than borrowing one from elsewhere.
+
 Plan 1 MUST BE a 'budget_plan' (Option 1: 💰 BUDGET SMART / BEST VALUE) prioritizing affordability with great local stays and sights.
 Plan 2 MUST BE a 'premium_plan' (Option 2: ✨ PREMIUM EXPERIENCE / BEST EXPERIENCE) prioritizing higher comfort, 4-star resorts, private transport, and premium adventures.
 The premium plan MUST have a higher total_cost than the budget plan.
@@ -214,7 +284,7 @@ You MUST respond ONLY with a valid JSON object matching this schema:
     "why_cheaper": "Why this plan is more affordable",
     "stops": [
       {{
-        "destination_name": "{destinations[0] if destinations else 'Goa'}",
+        "destination_name": "{destinations[0] if destinations else 'the destination'}",
         "arrival_date": "{start_date}",
         "departure_date": "{end_date}",
         "activities": [
@@ -250,7 +320,7 @@ You MUST respond ONLY with a valid JSON object matching this schema:
     "why_more": "Why this plan offers higher luxury",
     "stops": [
       {{
-        "destination_name": "{destinations[0] if destinations else 'Goa'}",
+        "destination_name": "{destinations[0] if destinations else 'the destination'}",
         "arrival_date": "{start_date}",
         "departure_date": "{end_date}",
         "activities": [
@@ -313,13 +383,24 @@ Requirements:
                         content = content[start:end + 1]
 
                 result = json.loads(content)
+                constrain_args = {
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "budget_tier": budget_tier,
+                    "travel_style": travel_style,
+                    "traveller_count": traveller_count,
+                }
                 if "budget_plan" in result and "premium_plan" in result:
-                    return result
+                    return self._constrain_options(
+                        result, destinations, **constrain_args
+                    )
                 elif "budget_plan" in result:
                     result["premium_plan"] = self.generate_fallback_two_plans(
                         destinations, start_date, end_date, budget_tier, travel_style, traveller_count
                     )["premium_plan"]
-                    return result
+                    return self._constrain_options(
+                        result, destinations, **constrain_args
+                    )
                 else:
                     return self.generate_fallback_two_plans(
                         destinations, start_date, end_date, budget_tier, travel_style, traveller_count

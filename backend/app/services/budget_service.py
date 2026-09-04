@@ -10,22 +10,106 @@ from sqlalchemy.orm import selectinload
 
 from app.models import (
     Accommodation,
+    Booking,
     Expense,
     ItineraryActivity,
     Transport,
     TripStop,
     User,
 )
-from app.models.enums import ExpenseCategory
+from app.models.enums import BookingItemStatus, ExpenseCategory, ServiceType
+from app.services.booking_service import BookingService
 from app.services.trip_service import TripService
 
 ZERO = Decimal("0")
+MONEY = Decimal("0.01")
+
+# Which budget bucket a booked component's spend belongs in. Guides sit with
+# activities: from the traveller's side of the ledger, a guided walk and a
+# museum ticket are the same kind of money.
+BUDGET_BUCKET = {
+    ServiceType.ACCOMMODATION: ExpenseCategory.ACCOMMODATION.value,
+    ServiceType.TRANSPORT: ExpenseCategory.TRANSPORT.value,
+    ServiceType.ACTIVITY: ExpenseCategory.ACTIVITIES.value,
+    ServiceType.GUIDE: ExpenseCategory.ACTIVITIES.value,
+    ServiceType.MEAL: ExpenseCategory.MEALS.value,
+    ServiceType.OTHER: ExpenseCategory.MISCELLANEOUS.value,
+}
 
 
 class BudgetService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.trips = TripService(db)
+
+    async def _booking_spend(self, trip_id: uuid.UUID) -> dict[str, Decimal]:
+        """Net money captured through the booking flow, by budget bucket.
+
+        Booking payments are real spend, and the budget tab used to miss them
+        entirely: paying 80,000 for flights and hotels on the Bookings tab
+        left "actual" reading zero and the full budget apparently untouched.
+
+        Folded in at read time rather than mirrored into the ``Expense``
+        table, because ``expenses.amount`` carries a ``> 0`` constraint -- a
+        refund could not be written as a reversing row, so a cancelled booking
+        would leave a phantom cost behind forever. Netting captures against
+        refunds here means a cancellation corrects the figure by itself, and
+        what remains after a penalised cancellation is exactly the fee that
+        was genuinely spent.
+
+        A payment is taken against a booking, not against one component, so
+        each booking's net capture is spread over its components in proportion
+        to their price. The rounding remainder goes on the largest component
+        so the buckets still sum to the amount actually paid.
+        """
+        buckets = {c.value: ZERO for c in ExpenseCategory}
+        misc = ExpenseCategory.MISCELLANEOUS.value
+
+        bookings = (
+            (
+                await self.db.execute(
+                    select(Booking)
+                    .where(Booking.trip_id == trip_id)
+                    .options(
+                        selectinload(Booking.items),
+                        selectinload(Booking.payments),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        for booking in bookings:
+            net = BookingService.amount_paid(booking)
+            if net <= 0:
+                continue
+
+            # Replaced components were superseded by their replacement; their
+            # price is already represented by the item that took their place.
+            items = [
+                i
+                for i in booking.items
+                if i.status != BookingItemStatus.REPLACED
+            ]
+            weight = sum((Decimal(str(i.total_price)) for i in items), ZERO)
+            if not items or weight <= 0:
+                buckets[misc] += net
+                continue
+
+            ordered = sorted(
+                items, key=lambda i: Decimal(str(i.total_price)), reverse=True
+            )
+            allocated = ZERO
+            for item in ordered[1:]:
+                share = (net * Decimal(str(item.total_price)) / weight).quantize(MONEY)
+                buckets[BUDGET_BUCKET.get(item.component_type, misc)] += share
+                allocated += share
+            buckets[BUDGET_BUCKET.get(ordered[0].component_type, misc)] += (
+                net - allocated
+            )
+
+        return buckets
 
     async def budget(self, trip_id: uuid.UUID, user: User) -> dict:
         """Spec section 14.
@@ -80,7 +164,14 @@ class BudgetService:
         actual = {c.value: ZERO for c in ExpenseCategory}
         for category, amount in spent_rows:
             actual[category.value] = Decimal(str(amount))
+
+        # Money paid through the Bookings tab counts against the budget too.
+        booking_spend = await self._booking_spend(trip_id)
+        for category, amount in booking_spend.items():
+            actual[category] += amount
+
         actual_total = sum(actual.values(), ZERO)
+        booking_total = sum(booking_spend.values(), ZERO)
 
         budget = Decimal(str(trip.budget))
         travellers = max(trip.traveller_count, 1)
@@ -91,6 +182,10 @@ class BudgetService:
             "total_budget": budget,
             "estimated_cost": planned_total,
             "actual_cost": actual_total,
+            # Split out so the UI can say where the spend came from: recorded
+            # expenses on one side, captured booking payments on the other.
+            "booking_paid": booking_total,
+            "expenses_logged": actual_total - booking_total,
             "remaining": budget - actual_total,
             "remaining_against_estimate": budget - planned_total,
             "over_budget": actual_total > budget,

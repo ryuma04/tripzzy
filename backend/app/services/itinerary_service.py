@@ -10,19 +10,26 @@ import uuid
 from datetime import date, time as dt_time, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationError,
+)
 from app.models import (
     ActivityCatalog,
+    BookingItem,
     Destination,
     ItineraryActivity,
     Trip,
     TripStop,
     User,
 )
+from app.models.enums import BookingItemStatus
 from app.schemas.stop import (
     ItineraryActivityCreateRequest,
     ItineraryActivityUpdateRequest,
@@ -35,6 +42,9 @@ from app.services.trip_service import TripService
 # renumbering rows one at a time trips the constraint mid-loop even though the
 # final state is perfectly valid.
 DEFER_CONSTRAINTS = text("SET CONSTRAINTS ALL DEFERRED")
+
+# A booking item in one of these states is still owed to the traveller.
+LIVE_BOOKING_ITEM_STATUSES = (BookingItemStatus.PENDING, BookingItemStatus.CONFIRMED)
 
 
 class ItineraryService:
@@ -53,6 +63,11 @@ class ItineraryService:
                 selectinload(TripStop.trip),
                 selectinload(TripStop.destination),
                 selectinload(TripStop.activities),
+                # ``stop_out`` reads accommodations too. Leaving it to lazy-load
+                # blew up under asyncio with MissingGreenlet the moment anything
+                # serialised a stop fetched this way -- GET /stops/{id} returned
+                # a 500 rather than the stop.
+                selectinload(TripStop.accommodations),
             )
         )
         if stop is None or stop.trip is None or stop.trip.deleted_at is not None:
@@ -349,8 +364,65 @@ class ItineraryService:
         await self.db.refresh(stop, ["activities"])
         return self.stop_out(stop, include_activities=True), warnings
 
+    async def _assert_not_booked(
+        self,
+        *,
+        stop_id: uuid.UUID | None = None,
+        activity_id: uuid.UUID | None = None,
+    ) -> None:
+        """Refuse to delete something a live booking hangs off.
+
+        ``BookingItem.stop_id`` and ``BookingItem.itinerary_activity_id`` are
+        ``ON DELETE SET NULL``, so the database will not stop this -- it will
+        quietly orphan the booking item instead. The traveller keeps the
+        charge and loses the row that says what it was for, with no
+        cancellation, no refund and nothing for the operator to act on.
+        """
+        stmt = select(BookingItem).where(
+            BookingItem.status.in_(LIVE_BOOKING_ITEM_STATUSES)
+        )
+        if stop_id is not None:
+            # Deleting a stop cascades to its activities, so an activity
+            # underneath it is just as booked as the stop itself.
+            stmt = stmt.where(
+                or_(
+                    BookingItem.stop_id == stop_id,
+                    BookingItem.itinerary_activity_id.in_(
+                        select(ItineraryActivity.id).where(
+                            ItineraryActivity.stop_id == stop_id
+                        )
+                    ),
+                )
+            )
+        else:
+            stmt = stmt.where(BookingItem.itinerary_activity_id == activity_id)
+
+        booked = (await self.db.execute(stmt)).scalars().all()
+        if not booked:
+            return
+
+        raise ConflictError(
+            f"{booked[0].title} is part of a confirmed booking, so this cannot be "
+            "deleted from the itinerary. Cancel the component on the Bookings tab "
+            "first -- that refunds whatever its terms allow and releases the "
+            "vendor's seat.",
+            details={
+                "booking_items": [
+                    {
+                        "id": str(b.id),
+                        "booking_id": str(b.booking_id),
+                        "title": b.title,
+                        "service_date": b.service_date.isoformat(),
+                        "status": b.status.value,
+                    }
+                    for b in booked
+                ]
+            },
+        )
+
     async def delete_stop(self, stop_id: uuid.UUID, user: User) -> None:
         stop = await self.get_owned_stop(stop_id, user)
+        await self._assert_not_booked(stop_id=stop.id)
         trip_id, removed_index = stop.trip_id, stop.order_index
 
         await self.db.delete(stop)
@@ -555,6 +627,7 @@ class ItineraryService:
 
     async def delete_activity(self, activity_id: uuid.UUID, user: User) -> None:
         activity = await self.get_owned_activity(activity_id, user)
+        await self._assert_not_booked(activity_id=activity.id)
         stop_id, removed_index = activity.stop_id, activity.order_index
 
         await self.db.delete(activity)

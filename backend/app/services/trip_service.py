@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
-from app.models import ItineraryActivity, Trip, TripStop, User
-from app.models.enums import TripStatus
+from app.models import Booking, ItineraryActivity, Trip, TripStop, User
+from app.models.enums import BookingStatus, TripStatus
 from app.repositories.trip_repository import TripRepository
 from app.schemas.trip import TripCreateRequest, TripUpdateRequest
 
@@ -34,6 +34,16 @@ def compute_status(trip: Trip, stop_count: int, today: date | None = None) -> Tr
     if today > trip.end_date:
         return TripStatus.COMPLETED
     return TripStatus.ONGOING
+
+
+# A booking in one of these states is a live commitment: vendor inventory is
+# held against it and, from ``pending_payment`` on, money has usually moved.
+# The trip underneath it is no longer the traveller's alone to reshape.
+COMMITTED_BOOKING_STATUSES = (
+    BookingStatus.PENDING_PAYMENT,
+    BookingStatus.CONFIRMED,
+    BookingStatus.IN_PROGRESS,
+)
 
 
 def slugify(value: str) -> str:
@@ -62,6 +72,34 @@ class TripService:
         if trip.user_id != user.id and not user.is_admin:
             raise ForbiddenError("You do not have access to this trip")
         return trip
+
+    async def committed_bookings(self, trip_id: uuid.UUID) -> list[Booking]:
+        """Bookings on this trip that vendors and payment rails know about."""
+        rows = (
+            await self.db.execute(
+                select(Booking)
+                .where(
+                    Booking.trip_id == trip_id,
+                    Booking.status.in_(COMMITTED_BOOKING_STATUSES),
+                )
+                .order_by(Booking.created_at)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    def _booking_details(bookings: list[Booking]) -> dict:
+        return {
+            "bookings": [
+                {
+                    "id": str(b.id),
+                    "reference": b.reference,
+                    "status": b.status.value,
+                    "total": str(b.total),
+                }
+                for b in bookings
+            ]
+        }
 
     # -- reads -------------------------------------------------------------
 
@@ -185,6 +223,21 @@ class TripService:
 
         dates_changed = new_start != trip.start_date or new_end != trip.end_date
         if dates_changed:
+            # Shifting the dates moves the itinerary but not the reservations:
+            # ``_handle_date_change`` clamps stops and activities, and never
+            # touches ``BookingItem.service_date``. A trip moved from October
+            # to November would show November while the hotel and the flight
+            # stayed booked for October, and the traveller's paid components
+            # would expire before they travelled.
+            committed = await self.committed_bookings(trip.id)
+            if committed:
+                raise ConflictError(
+                    "These dates are already booked with vendors "
+                    f"({', '.join(b.reference for b in committed)}). Moving the trip "
+                    "here would leave the reservations on the old dates. Cancel or "
+                    "re-book the affected components first.",
+                    details=self._booking_details(committed),
+                )
             await self._handle_date_change(trip, new_start, new_end, cascade=cascade)
 
         for field, value in changes.items():
@@ -270,8 +323,26 @@ class TripService:
                     activity.activity_date = stop.arrival_date
 
     async def delete(self, trip_id: uuid.UUID, user: User) -> None:
-        """Soft delete (refinement R8)."""
+        """Soft delete (refinement R8).
+
+        Refused while the trip carries a live booking. A soft-deleted trip
+        404s on every route, so deleting one that has been paid for locks the
+        traveller out of their own reference codes, vouchers and cancellation
+        flow -- the money is gone, the vendor capacity is consumed, and there
+        is no longer a screen on which to get either back.
+        """
         trip = await self.get_owned(trip_id, user)
+
+        committed = await self.committed_bookings(trip.id)
+        if committed:
+            raise ConflictError(
+                f"This trip has {len(committed)} active booking(s) "
+                f"({', '.join(b.reference for b in committed)}). Cancel and settle "
+                "them first -- deleting the trip now would leave paid-for bookings "
+                "unreachable.",
+                details=self._booking_details(committed),
+            )
+
         trip.deleted_at = datetime.now(timezone.utc)
         # A deleted trip must not stay reachable through its public link.
         trip.is_public = False

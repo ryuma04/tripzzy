@@ -47,74 +47,129 @@ function formatDuration(minutes?: number, hours?: number): string {
   return "3 hours";
 }
 
-const DEFAULT_RECOMMENDED_ACTIVITIES: Activity[] = [
-  {
-    id: "rec-gateway-mumbai",
-    destination_id: "mumbai-dest",
-    destination_name: "Mumbai",
-    title: "Gateway of India & Colaba Heritage Walk",
-    category: "SIGHTSEEING",
-    estimated_cost: 400,
-    duration_hours: 3.0,
-    description: "Explore the iconic arch-monument and historic colonial streets of South Mumbai.",
-    rating: 4.8,
-  },
-  {
-    id: "rec-marine-drive",
-    destination_id: "mumbai-dest",
-    destination_name: "Mumbai",
-    title: "Marine Drive Sunset & Street Food",
-    category: "FOOD & LEISURE",
-    estimated_cost: 350,
-    duration_hours: 2.5,
-    description: "Stroll along Queen's Necklace and enjoy local beach delicacies at Chowpatty.",
-    rating: 4.9,
-  },
-  {
-    id: "rec-elephanta-caves",
-    destination_id: "mumbai-dest",
-    destination_name: "Mumbai",
-    title: "Elephanta Caves Ferry & Tour",
-    category: "HISTORICAL",
-    estimated_cost: 850,
-    duration_hours: 4.5,
-    description: "Scenic ferry ride and guided exploration of UNESCO rock-cut cave temples.",
-    rating: 4.7,
-  },
-  {
-    id: "rec-scuba-goa",
-    destination_id: "goa-dest",
-    destination_name: "Goa",
-    title: "Scuba Diving & Island Trip at Grande Island",
-    category: "ADVENTURE",
-    estimated_cost: 2800,
-    duration_hours: 5.0,
-    description: "Clear-water scuba diving with certified instructors and dolphin sightings.",
-    rating: 4.9,
-  },
-  {
-    id: "rec-chapora-goa",
-    destination_id: "goa-dest",
-    destination_name: "Goa",
-    title: "Chapora Fort Sunset & Vagator Shack Dinner",
-    category: "LEISURE",
-    estimated_cost: 1200,
-    duration_hours: 3.5,
-    description: "Panoramic cliff views of the Arabian Sea followed by beachfront dining.",
-    rating: 4.8,
-  },
-  {
-    id: "rec-beach-trek",
-    destination_id: "goa-dest",
-    destination_name: "Goa / Coastal",
-    title: "5-Beach Cliffside Trek (Kudle to Paradise)",
-    category: "TREKKING",
-    estimated_cost: 500,
-    duration_hours: 4.0,
-    description: "Scenic coastal ridge hiking traversing pristine beaches and rocky promontories.",
-    rating: 4.8,
-  },
-];
+/**
+ * Curated fallback suggestions, keyed by the city they actually belong to.
+ *
+ * This used to be one flat list that the wizard seeded itself from on mount
+ * and then topped up with whenever it had fewer than four suggestions --
+ * which is exactly how a trip to Amritsar ended up recommending Marine Drive
+ * and the Gateway of India. Keying by city means a curated entry can only
+ * ever surface for its own destination; there is no global pool to fall into.
+ */
+const CURATED_ACTIVITIES_BY_CITY: Record<string, Activity[]> = {
+  mumbai: [
+    {
+      id: "rec-gateway-mumbai",
+      destination_id: "mumbai-dest",
+      destination_name: "Mumbai",
+      title: "Gateway of India & Colaba Heritage Walk",
+      category: "SIGHTSEEING",
+      estimated_cost: 400,
+      duration_hours: 3.0,
+      description: "Explore the iconic arch-monument and historic colonial streets of South Mumbai.",
+      rating: 4.8,
+    },
+    {
+      id: "rec-marine-drive",
+      destination_id: "mumbai-dest",
+      destination_name: "Mumbai",
+      title: "Marine Drive Sunset & Street Food",
+      category: "FOOD & LEISURE",
+      estimated_cost: 350,
+      duration_hours: 2.5,
+      description: "Stroll along Queen's Necklace and enjoy local beach delicacies at Chowpatty.",
+      rating: 4.9,
+    },
+    {
+      id: "rec-elephanta-caves",
+      destination_id: "mumbai-dest",
+      destination_name: "Mumbai",
+      title: "Elephanta Caves Ferry & Tour",
+      category: "HISTORICAL",
+      estimated_cost: 850,
+      duration_hours: 4.5,
+      description: "Scenic ferry ride and guided exploration of UNESCO rock-cut cave temples.",
+      rating: 4.7,
+    },
+  ],
+  goa: [
+    {
+      id: "rec-scuba-goa",
+      destination_id: "goa-dest",
+      destination_name: "Goa",
+      title: "Scuba Diving & Island Trip at Grande Island",
+      category: "ADVENTURE",
+      estimated_cost: 2800,
+      duration_hours: 5.0,
+      description: "Clear-water scuba diving with certified instructors and dolphin sightings.",
+      rating: 4.9,
+    },
+    {
+      id: "rec-chapora-goa",
+      destination_id: "goa-dest",
+      destination_name: "Goa",
+      title: "Chapora Fort Sunset & Vagator Shack Dinner",
+      category: "LEISURE",
+      estimated_cost: 1200,
+      duration_hours: 3.5,
+      description: "Panoramic cliff views of the Arabian Sea followed by beachfront dining.",
+      rating: 4.8,
+    },
+  ],
+};
+
+/** The names a place has to mention to count as being in this destination. */
+function destinationAliases(dest: Destination): string[] {
+  return [dest.name, dest.city, dest.region]
+    .filter((v): v is string => Boolean(v && v.trim()))
+    .map((v) => v.trim().toLowerCase());
+}
+
+/**
+ * Is this activity verifiably part of one of the selected destinations?
+ *
+ * Only fields the app controls are trusted: the catalogue's own
+ * ``destination_id`` (the API filtered on it) and the ``destination_name``
+ * stamped on a curated or Google-sourced entry after its address was
+ * checked. Free text like the description is deliberately not searched --
+ * "a short drive from Goa" is not evidence of being in Goa.
+ */
+function belongsToDestination(act: Activity, dests: Destination[]): boolean {
+  if (dests.length === 0) return false;
+
+  if (act.destination_id && dests.some((d) => d.id === act.destination_id)) {
+    return true;
+  }
+
+  const claimed = (act.destination_name || "").trim().toLowerCase();
+  if (!claimed) return false;
+  return dests.some((d) =>
+    destinationAliases(d).some(
+      (alias) => claimed === alias || claimed.includes(alias)
+    )
+  );
+}
+
+/**
+ * Does a Google Places result actually sit in this destination?
+ *
+ * The search is phrased as "<city> top attractions", but Places happily
+ * returns near-misses from neighbouring cities, and the old code stamped the
+ * selected destination onto every result regardless. Checking the formatted
+ * address before converting is what makes the stamp meaningful.
+ */
+function placeIsInDestination(place: any, dest: Destination): boolean {
+  const address = [
+    place.formattedAddress,
+    place.shortFormattedAddress,
+    place.displayName?.text,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (!address) return false;
+  return destinationAliases(dest).some((alias) => address.includes(alias));
+}
 
 function convertGooglePlaceToActivity(place: any, destName: string, destId: string): Activity {
   const title = place.displayName?.text || place.formattedAddress?.split(",")[0] || "Attraction";
@@ -162,27 +217,169 @@ function convertGooglePlaceToActivity(place: any, destName: string, destId: stri
   };
 }
 
+/**
+ * The wizard draft, kept in sessionStorage.
+ *
+ * Every step lives in one component, so moving between them never lost state
+ * on its own -- but a browser Back, a refresh, or a detour through the
+ * sidebar unmounts the page and took the whole form with it. Persisting the
+ * draft makes the answer to "is my data still there?" the same however the
+ * user arrived back. It is session-scoped, so it does not outlive the tab.
+ */
+const DRAFT_KEY = "tripzyy_trip_wizard_draft";
+
+interface WizardDraft {
+  currentStep: number;
+  title: string;
+  startDate: string;
+  endDate: string;
+  budget: string;
+  travellerCount: string;
+  selectedDestinations: Destination[];
+  selectedActivities: Activity[];
+}
+
+const EMPTY_DRAFT: WizardDraft = {
+  currentStep: 1,
+  title: "",
+  startDate: "",
+  endDate: "",
+  budget: "30000",
+  travellerCount: "2",
+  selectedDestinations: [],
+  selectedActivities: [],
+};
+
+function readDraft(): WizardDraft {
+  if (typeof window === "undefined") return EMPTY_DRAFT;
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return EMPTY_DRAFT;
+    // Spread over the defaults so a draft written by an older build, or one
+    // missing a field, still hydrates instead of throwing.
+    return { ...EMPTY_DRAFT, ...(JSON.parse(raw) as Partial<WizardDraft>) };
+  } catch {
+    return EMPTY_DRAFT;
+  }
+}
+
+/** Travellers per trip. The wizard's own rule, enforced on both sides. */
+const MIN_TRAVELLERS = 1;
+const MAX_TRAVELLERS = 10;
+const TRAVELLER_ERROR = `Please enter between ${MIN_TRAVELLERS} and ${MAX_TRAVELLERS} travelers.`;
+
+/**
+ * Parse the traveller field without ever rescuing a bad value.
+ *
+ * Returns ``null`` for anything that is not a whole number in range --
+ * empty, 0, negative, 2.5, 1000000000000, "abc". The caller shows the error
+ * rather than clamping, because silently turning 1000000000000 into 10 tells
+ * the user their input was accepted when it was not.
+ */
+function parseTravellers(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (!Number.isSafeInteger(n)) return null;
+  if (n < MIN_TRAVELLERS || n > MAX_TRAVELLERS) return null;
+  return n;
+}
+
 export default function CreateTripPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  const [currentStep, setCurrentStep] = useState(1);
+  // The draft is restored *after* mount, not during render. This page is
+  // prerendered, so reading sessionStorage in a state initialiser would give
+  // the client a different first render than the server HTML and React would
+  // flag a hydration mismatch. ``isHydrated`` also gates the save below, so
+  // the initial empty state can never overwrite a stored draft.
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // Available catalog
+  const [currentStep, setCurrentStep] = useState(EMPTY_DRAFT.currentStep);
+
+  // Available catalog. Activities start empty: there is nothing honest to
+  // suggest until a destination has been picked.
   const [availableDestinations, setAvailableDestinations] = useState<Destination[]>([]);
-  const [availableActivities, setAvailableActivities] = useState<Activity[]>(DEFAULT_RECOMMENDED_ACTIVITIES);
+  const [availableActivities, setAvailableActivities] = useState<Activity[]>([]);
 
   // Form State
-  const [title, setTitle] = useState("Goa & Coastal Route Expedition");
-  const [startDate, setStartDate] = useState("2026-10-12");
-  const [endDate, setEndDate] = useState("2026-10-18");
-  const [budget, setBudget] = useState(30000);
-  const [travellerCount, setTravellerCount] = useState(2);
-  const [selectedDestinations, setSelectedDestinations] = useState<Destination[]>([]);
-  const [selectedActivities, setSelectedActivities] = useState<Activity[]>([]);
+  const [title, setTitle] = useState(EMPTY_DRAFT.title);
+  const [startDate, setStartDate] = useState(EMPTY_DRAFT.startDate);
+  const [endDate, setEndDate] = useState(EMPTY_DRAFT.endDate);
+  const [budget, setBudget] = useState(EMPTY_DRAFT.budget);
+  // Held as the raw string so an invalid entry stays visible and rejectable
+  // instead of being coerced (``Number("")`` is 0, which read as a valid
+  // party of zero).
+  const [travellerCount, setTravellerCount] = useState(EMPTY_DRAFT.travellerCount);
+  const [selectedDestinations, setSelectedDestinations] = useState<Destination[]>(
+    EMPTY_DRAFT.selectedDestinations
+  );
+  const [selectedActivities, setSelectedActivities] = useState<Activity[]>(
+    EMPTY_DRAFT.selectedActivities
+  );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const budgetValue = Number(budget) || 0;
+  const travellers = parseTravellers(travellerCount);
+
+  // Restore whatever the user had entered before, once, on mount.
+  //
+  // The rule below flags setState in an effect body as a cascading-render
+  // risk. It does not apply here: sessionStorage cannot be read during
+  // render without a hydration mismatch, and this runs exactly once, on
+  // mount, with every value set in a single batch.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const draft = readDraft();
+    setCurrentStep(draft.currentStep);
+    setTitle(draft.title);
+    setStartDate(draft.startDate);
+    setEndDate(draft.endDate);
+    setBudget(draft.budget);
+    setTravellerCount(draft.travellerCount);
+    setSelectedDestinations(draft.selectedDestinations);
+    setSelectedActivities(draft.selectedActivities);
+    setIsHydrated(true);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Save on every change, so going back -- by button, step bar, or browser --
+  // always finds the latest values.
+  useEffect(() => {
+    if (!isHydrated) return;
+    try {
+      window.sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          currentStep,
+          title,
+          startDate,
+          endDate,
+          budget,
+          travellerCount,
+          selectedDestinations,
+          selectedActivities,
+        } satisfies WizardDraft)
+      );
+    } catch {
+      // A full or blocked sessionStorage must not break the wizard; the
+      // in-memory state is still the source of truth for this mount.
+    }
+  }, [
+    isHydrated,
+    currentStep,
+    title,
+    startDate,
+    endDate,
+    budget,
+    travellerCount,
+    selectedDestinations,
+    selectedActivities,
+  ]);
 
   // Google Places Search State for Wizard Destinations (Step 2)
   const [placeSearchQuery, setPlaceSearchQuery] = useState("");
@@ -291,8 +488,20 @@ export default function CreateTripPage() {
         }
       }
       if (placeDetails) {
-        const firstDest = selectedDestinations[0] || { name: "Destination", id: "temp-dest" };
-        const newAct = convertGooglePlaceToActivity(placeDetails, firstDest.name, firstDest.id);
+        // Stamp the destination the place is actually in, not just the first
+        // one on the route. Searching "Taj Mahal" on an Amritsar trip used to
+        // add it labelled Amritsar, which then passed every later check.
+        const host = selectedDestinations.find((d) =>
+          placeIsInDestination(placeDetails, d)
+        );
+        if (!host) {
+          showToast(
+            "That place is not in any of your selected destinations, so it was not added.",
+            "error"
+          );
+          return;
+        }
+        const newAct = convertGooglePlaceToActivity(placeDetails, host.name, host.id);
         setAvailableActivities((prev) => [newAct, ...prev.filter(a => a.id !== newAct.id)]);
         setSelectedActivities((prev) => [...prev, newAct]);
         showToast(`Added "${newAct.title}" to trip activities!`, "success");
@@ -307,35 +516,20 @@ export default function CreateTripPage() {
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const [destsRes, actsRes] = await Promise.all([
-          destinationService.search({ limit: 30 }),
-          activityService.search({ limit: 30 }),
-        ]);
+        // Destinations only. The activity catalogue is deliberately *not*
+        // pre-loaded here: an unfiltered ``/activities/search`` returns a
+        // global list, and seeding the wizard from it -- plus auto-selecting
+        // the first two destinations and the first two activities -- is what
+        // produced a "Golden Temple + Taj Mahal + Holy Cross" itinerary for a
+        // destination the user never picked. Suggestions are fetched per
+        // destination in the step-3 effect below.
+        const destsRes = await destinationService.search({ limit: 30 });
 
         if (destsRes.success && destsRes.data) {
           const items = Array.isArray(destsRes.data)
             ? destsRes.data
             : (destsRes.data as any).items || [];
           setAvailableDestinations(items);
-          if (items.length > 0) {
-            setSelectedDestinations(items.slice(0, 2));
-          }
-        }
-
-        if (actsRes.success && actsRes.data) {
-          const items = Array.isArray(actsRes.data)
-            ? actsRes.data
-            : (actsRes.data as any).items || [];
-          if (items.length > 0) {
-            // Combine with curated defaults
-            const combined = [...items, ...DEFAULT_RECOMMENDED_ACTIVITIES];
-            const deduped = Array.from(new Map(combined.map(a => [a.title || a.name, a])).values());
-            setAvailableActivities(deduped);
-            setSelectedActivities(deduped.slice(0, 2));
-          } else {
-            setAvailableActivities(DEFAULT_RECOMMENDED_ACTIVITIES);
-            setSelectedActivities(DEFAULT_RECOMMENDED_ACTIVITIES.slice(0, 2));
-          }
         }
       } catch (err) {
         console.error("Failed to load catalog for wizard:", err);
@@ -345,63 +539,103 @@ export default function CreateTripPage() {
     loadCatalog();
   }, []);
 
-  // Fetch relevant activities from Google Places API + DB when user enters Step 3
+  // Suggestions for the selected destinations, and nothing else.
   useEffect(() => {
+    let cancelled = false;
+
     async function loadActivitiesForStep() {
-      if (currentStep !== 3 || selectedDestinations.length === 0) return;
+      if (currentStep !== 3) return;
+
+      if (selectedDestinations.length === 0) {
+        setAvailableActivities([]);
+        return;
+      }
+
+      setIsSearchingStep3Activities(true);
+      const collected: Activity[] = [];
+
       try {
-        setIsSearchingStep3Activities(true);
-
-        // 1. Fetch DB activities for destinations
-        const dbPromises = selectedDestinations.map((d) =>
-          activityService.search({ destination_id: d.id, limit: 8 } as any)
+        // 1. The catalogue, filtered server-side by destination.
+        const dbResults = await Promise.all(
+          selectedDestinations.map((d) =>
+            activityService.search({ destination_id: d.id, limit: 8 } as any)
+          )
         );
-        const dbResults = await Promise.all(dbPromises);
-        const collected: Activity[] = [];
-        for (const res of dbResults) {
-          if (res.success && res.data) {
-            const items = Array.isArray(res.data) ? res.data : (res.data as any).items || [];
-            collected.push(...items);
-          }
-        }
+        dbResults.forEach((res, idx) => {
+          if (!res.success || !res.data) return;
+          const items: Activity[] = Array.isArray(res.data)
+            ? res.data
+            : (res.data as any).items || [];
+          const dest = selectedDestinations[idx];
+          // Stamp the destination we asked for, so the entry carries its own
+          // provenance even if the row came back without one.
+          items.forEach((a) =>
+            collected.push({
+              ...a,
+              destination_id: a.destination_id || dest.id,
+              destination_name: a.destination_name || dest.name,
+            })
+          );
+        });
 
-        // 2. Fetch live Google Places tourist attractions for each selected destination
-        const googlePromises = selectedDestinations.map((d) =>
-          placesService.search(`${d.name} top attractions tourist places`)
+        // 2. Live Google Places attractions -- kept only when the address
+        //    actually places them in the destination that was searched for.
+        const googleResults = await Promise.all(
+          selectedDestinations.map((d) =>
+            placesService
+              .search(`${d.name} top attractions tourist places`)
+              .catch(() => null)
+          )
         );
-        const googleResults = await Promise.all(googlePromises);
         googleResults.forEach((res, idx) => {
-          if (res.success && res.data?.places) {
-            const dest = selectedDestinations[idx];
-            res.data.places.slice(0, 5).forEach((p) => {
+          if (!res || !res.success || !res.data?.places) return;
+          const dest = selectedDestinations[idx];
+          res.data.places
+            .filter((p) => placeIsInDestination(p, dest))
+            .slice(0, 5)
+            .forEach((p) => {
               collected.push(convertGooglePlaceToActivity(p, dest.name, dest.id));
             });
-          }
         });
 
-        // 3. Fallback to curated recommendations matching destination
-        DEFAULT_RECOMMENDED_ACTIVITIES.forEach((rec) => {
-          const matches = selectedDestinations.some(
-            (d) => rec.destination_name?.toLowerCase().includes(d.name.toLowerCase()) ||
-                   d.name.toLowerCase().includes(rec.destination_name?.toLowerCase() || "")
-          );
-          if (matches || collected.length < 4) {
-            collected.push(rec);
-          }
+        // 3. Curated fallbacks -- only the ones filed under a selected city.
+        //    The old code topped up from a global list whenever it had fewer
+        //    than four suggestions, which is how Mumbai and Goa entries
+        //    turned up on an Amritsar trip.
+        selectedDestinations.forEach((dest) => {
+          destinationAliases(dest).forEach((alias) => {
+            (CURATED_ACTIVITIES_BY_CITY[alias] || []).forEach((rec) =>
+              collected.push(rec)
+            );
+          });
         });
-
-        // Deduplicate by title
-        const deduped = Array.from(new Map(collected.map(a => [(a.title || a.name || "").toLowerCase().trim(), a])).values());
-        if (deduped.length > 0) {
-          setAvailableActivities(deduped);
-        }
       } catch (e) {
         console.warn("Could not load destination-specific activities", e);
-      } finally {
-        setIsSearchingStep3Activities(false);
       }
+
+      if (cancelled) return;
+
+      // Nothing is displayed until its destination checks out.
+      const verified = collected.filter((a) =>
+        belongsToDestination(a, selectedDestinations)
+      );
+      const deduped = Array.from(
+        new Map(
+          verified.map((a) => [(a.title || a.name || "").toLowerCase().trim(), a])
+        ).values()
+      );
+
+      // Assigned unconditionally, empty included: leaving the previous list in
+      // place is what let the last destination's attractions linger after the
+      // route changed.
+      setAvailableActivities(deduped);
+      setIsSearchingStep3Activities(false);
     }
+
     loadActivitiesForStep();
+    return () => {
+      cancelled = true;
+    };
   }, [currentStep, selectedDestinations]);
 
   // Validation
@@ -413,8 +647,13 @@ export default function CreateTripPage() {
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       errs.endDate = "End date cannot be earlier than start date";
     }
-    if (budget < 0) errs.budget = "Budget cannot be negative";
-    if (travellerCount < 1) errs.travellerCount = "Must have at least 1 traveller";
+    if (!budget.trim() || Number.isNaN(Number(budget)) || Number(budget) < 0) {
+      errs.budget = "Budget cannot be negative";
+    }
+    // One rule, one place: empty, 0, negative, fractional, non-numeric and
+    // absurdly large all come back as null and are refused rather than
+    // rounded into something that looks acceptable.
+    if (travellers === null) errs.travellerCount = TRAVELLER_ERROR;
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -439,7 +678,14 @@ export default function CreateTripPage() {
 
   const toggleDestination = (dest: Destination) => {
     if (selectedDestinations.some((d) => d.id === dest.id)) {
-      setSelectedDestinations(selectedDestinations.filter((d) => d.id !== dest.id));
+      const remaining = selectedDestinations.filter((d) => d.id !== dest.id);
+      setSelectedDestinations(remaining);
+      // Drop anything that was only on the trip because of the stop just
+      // removed. Without this an activity for a dropped destination rode
+      // along into the review step and into the created trip.
+      setSelectedActivities((prev) =>
+        prev.filter((a) => belongsToDestination(a, remaining))
+      );
     } else {
       setSelectedDestinations([...selectedDestinations, dest]);
     }
@@ -453,7 +699,27 @@ export default function CreateTripPage() {
     }
   };
 
+  /** The draft has served its purpose once the trip exists. */
+  const clearDraft = () => {
+    try {
+      window.sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Nothing to do: a draft we cannot clear is a stale draft, not a bug
+      // worth failing a successful creation over.
+    }
+  };
+
   const handleCreateTrip = async () => {
+    // The same rule the step-1 form applies, re-checked here: the review step
+    // is reachable by clicking the step bar, and a trip must never be created
+    // with a party size the wizard would have refused.
+    if (travellers === null) {
+      setCurrentStep(1);
+      setErrors((prev) => ({ ...prev, travellerCount: TRAVELLER_ERROR }));
+      showToast(TRAVELLER_ERROR, "error");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // 1. Create Trip
@@ -461,8 +727,8 @@ export default function CreateTripPage() {
         title: title.trim(),
         start_date: startDate,
         end_date: endDate,
-        budget: Number(budget),
-        traveller_count: Number(travellerCount),
+        budget: budgetValue,
+        traveller_count: travellers,
       });
 
       if (!createRes.success || !createRes.data) {
@@ -515,6 +781,7 @@ export default function CreateTripPage() {
         }
       }
 
+      clearDraft();
       showToast("Trip and multi-city itinerary initialized!", "success");
       router.push(`/trips/${tripId}`);
     } catch (err: any) {
@@ -537,6 +804,12 @@ export default function CreateTripPage() {
       showToast("Please fill all required fields and select at least one destination.", "error");
       return;
     }
+    if (travellers === null) {
+      setCurrentStep(1);
+      setErrors((prev) => ({ ...prev, travellerCount: TRAVELLER_ERROR }));
+      showToast(TRAVELLER_ERROR, "error");
+      return;
+    }
 
     setIsGeneratingAI(true);
     setAiError(null);
@@ -549,9 +822,10 @@ export default function CreateTripPage() {
         destination_names: selectedDestinations.map((d) => d.name),
         start_date: startDate,
         end_date: endDate,
-        budget_tier: budget > 50000 ? "Luxury" : budget > 20000 ? "Moderate" : "Budget",
+        budget_tier:
+          budgetValue > 50000 ? "Luxury" : budgetValue > 20000 ? "Moderate" : "Budget",
         travel_style: selectedActivities.map((a) => a.title || a.name).join(", ") || "General Sightseeing",
-        traveller_count: Number(travellerCount),
+        traveller_count: travellers,
       });
 
       if (res.success && res.data?.budget_plan && res.data?.premium_plan) {
@@ -570,6 +844,12 @@ export default function CreateTripPage() {
   };
 
   const handleSelectAIPlan = async (plan: AITravelPlan) => {
+    if (travellers === null) {
+      setCurrentStep(1);
+      setErrors((prev) => ({ ...prev, travellerCount: TRAVELLER_ERROR }));
+      showToast(TRAVELLER_ERROR, "error");
+      return;
+    }
     setIsSelectingPlan(true);
     try {
       showToast(`Saving ${plan.badge} itinerary to workspace...`, "info");
@@ -578,10 +858,11 @@ export default function CreateTripPage() {
         destination_ids: selectedDestinations.map((d) => d.id),
         start_date: startDate,
         end_date: endDate,
-        traveller_count: Number(travellerCount),
+        traveller_count: travellers,
       });
 
       if (res.success && res.data) {
+        clearDraft();
         showToast("Expedition successfully initialized and saved!", "success");
         router.push(`/trips/${res.data.id}`);
       } else {
@@ -602,7 +883,7 @@ export default function CreateTripPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-8 max-w-5xl mx-auto">
+    <div className="flex flex-col gap-6 max-w-6xl mx-auto pb-24">
       <SectionHeader
         tag="Trip Architect"
         tagColor="red"
@@ -704,7 +985,7 @@ export default function CreateTripPage() {
                     min="0"
                     placeholder="30000"
                     value={budget}
-                    onChange={(e) => setBudget(Number(e.target.value))}
+                    onChange={(e) => setBudget(e.target.value)}
                     error={errors.budget}
                     leftIcon={<Wallet className="w-4 h-4" />}
                     required
@@ -712,11 +993,16 @@ export default function CreateTripPage() {
                   <NeoInput
                     label="Number of Travellers"
                     type="number"
-                    min="1"
+                    min={MIN_TRAVELLERS}
+                    max={MAX_TRAVELLERS}
+                    step="1"
                     placeholder="2"
+                    // Kept as the raw string: coercing here would turn a
+                    // cleared field into 0 and hide the mistake.
                     value={travellerCount}
-                    onChange={(e) => setTravellerCount(Number(e.target.value))}
+                    onChange={(e) => setTravellerCount(e.target.value)}
                     error={errors.travellerCount}
+                    helperText={`Between ${MIN_TRAVELLERS} and ${MAX_TRAVELLERS} travellers.`}
                     leftIcon={<Users className="w-4 h-4" />}
                     required
                   />
@@ -812,61 +1098,64 @@ export default function CreateTripPage() {
                   <TripMap
                     destinations={selectedDestinations}
                     activities={selectedActivities}
-                    height="320px"
+                    height="200px"
                     showControls={true}
                     showLegend={true}
                   />
                 </div>
               )}
 
-              {/* Destination Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {/* Destination Grid.
+
+                  Four across on a wide screen instead of three, with the
+                  image, padding and heading trimmed: the whole card is the
+                  click target, so the full-width button underneath was
+                  ~40px of pure height per card for no extra affordance. The
+                  selected state still reads at a glance from the tint, the
+                  shadow and the corner tick. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {availableDestinations.map((dest) => {
                   const isSelected = selectedDestinations.some((d) => d.id === dest.id || d.name.toLowerCase() === dest.name.toLowerCase());
                   const imgUrl = resolvePlaceImageUrl(dest.name, undefined, dest.image_url);
                   return (
-                    <div
+                    <button
                       key={dest.id}
+                      type="button"
+                      aria-pressed={isSelected}
                       onClick={() => toggleDestination(dest)}
-                      className={`p-4 rounded-xl border-[3px] border-[#171313] transition-all cursor-pointer select-none flex flex-col justify-between ${
+                      className={`p-2.5 text-left rounded-xl border-[3px] border-[#171313] transition-all cursor-pointer select-none flex flex-col ${
                         isSelected
                           ? "bg-[#F3B5A8]/30 shadow-[4px_4px_0px_#D94B3D] -translate-x-0.5 -translate-y-0.5 border-[#171313]"
                           : "bg-white hover:bg-[#FFFAF3] shadow-[2px_2px_0px_#171313]"
                       }`}
                     >
-                      <div className="relative h-32 w-full rounded-lg border-2 border-[#171313] overflow-hidden mb-3 bg-neutral-100">
+                      {/* A fixed height, not an aspect ratio: at four
+                          columns an aspect-ratio thumbnail grows with the
+                          column and ends up taller than the 128px one it
+                          replaced, which is the opposite of the point. */}
+                      <div className="relative h-24 w-full rounded-lg border-2 border-[#171313] overflow-hidden mb-2 bg-neutral-100">
                         <img
                           src={imgUrl}
                           alt={dest.name}
                           className="object-cover w-full h-full"
                         />
-                        <span className="absolute top-2 left-2 text-[10px] font-extrabold uppercase px-2 py-0.5 bg-[#FFF4E6] border border-[#171313] rounded text-[#171313]">
+                        <span className="absolute top-1.5 left-1.5 text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-[#FFF4E6] border border-[#171313] rounded text-[#171313]">
                           {dest.region || dest.country}
                         </span>
                         {isSelected && (
-                          <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-[#D94B3D] border-2 border-[#171313] flex items-center justify-center text-white">
-                            <Check className="w-4 h-4 stroke-[3]" />
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[#D94B3D] border-2 border-[#171313] flex items-center justify-center text-white">
+                            <Check className="w-3 h-3 stroke-[3]" />
                           </div>
                         )}
                       </div>
 
-                      <div className="mb-3">
-                        <h4 className="font-display font-extrabold text-base text-[#171313]">
-                          {dest.name}
-                        </h4>
-                        <span className="text-xs font-bold text-[#D94B3D]">
-                          {dest.city}, {dest.country}
-                        </span>
-                      </div>
-
-                      <NeoButton
-                        variant={isSelected ? "green" : "cream"}
-                        size="sm"
-                        className="w-full"
-                      >
-                        {isSelected ? "Selected ✓" : "+ Add Stop"}
-                      </NeoButton>
-                    </div>
+                      <h4 className="font-display font-extrabold text-sm text-[#171313] leading-tight truncate">
+                        {dest.name}
+                      </h4>
+                      <span className="text-[11px] font-bold text-[#D94B3D] truncate">
+                        {isSelected ? "Selected ✓" : `${dest.city}, ${dest.country}`}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
@@ -953,6 +1242,31 @@ export default function CreateTripPage() {
                   </button>
                 ))}
               </div>
+
+              {/* Nothing verified for this route: say so rather than filling
+                  the grid with attractions from somewhere else. */}
+              {!isSearchingStep3Activities && availableActivities.length === 0 && (
+                <div className="p-6 bg-[#FFF4E6] border-2 border-dashed border-[#171313] rounded-xl text-center">
+                  <p className="font-display font-extrabold text-sm text-[#171313]">
+                    {selectedDestinations.length === 0
+                      ? "Select a destination first to see suggestions."
+                      : "No verified activities available for this destination."}
+                  </p>
+                  {selectedDestinations.length > 0 && (
+                    <p className="text-xs font-semibold text-neutral-600 mt-1">
+                      Search above to add a specific place, or continue and let the
+                      AI Co-Pilot plan the days.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {isSearchingStep3Activities && availableActivities.length === 0 && (
+                <div className="p-6 text-center text-sm font-semibold text-neutral-500">
+                  Finding verified activities for{" "}
+                  {selectedDestinations.map((d) => d.name).join(", ")}...
+                </div>
+              )}
 
               {/* Activity Recommendations Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1072,7 +1386,7 @@ export default function CreateTripPage() {
                     Budget & Group
                   </span>
                   <div className="font-display font-extrabold text-base text-[#111111]">
-                    ₹{budget.toLocaleString("en-IN")} • {travellerCount} Travellers
+                    ₹{budgetValue.toLocaleString("en-IN")} • {travellers ?? "—"} Travellers
                   </div>
                 </div>
               </div>
@@ -1321,8 +1635,12 @@ export default function CreateTripPage() {
         )}
       </AnimatePresence>
 
-      {/* Footer Navigation Buttons */}
-      <div className="flex items-center justify-between pt-2">
+      {/* Footer Navigation Buttons.
+
+          Sticky, so Continue stays reachable however long the step's content
+          runs -- on the destinations step the grid used to push it several
+          screens below the fold. */}
+      <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 py-3 px-3 -mx-3 bg-[#FAF7F2]/95 backdrop-blur-sm border-t-[3px] border-[#171313]">
         <NeoButton
           variant="white"
           size="md"

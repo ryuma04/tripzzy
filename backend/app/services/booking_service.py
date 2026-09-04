@@ -89,6 +89,42 @@ def refund_due(
     return refund, penalty, reason
 
 
+def refundable_cash(paid: Decimal, refund: Decimal, penalty: Decimal) -> Decimal:
+    """How much money can actually go back to the card.
+
+    The penalty is charged against what the traveller *paid*, not against the
+    catalogue price. Capping at ``min(refund, paid)`` -- which is what this
+    used to do -- handed back the whole deposit on a penalised cancellation:
+    a 20% deposit of 10,000 on a 50,000 tour with a 30% penalty is smaller
+    than the 35,000 gross refund, so the cap never bit and the 15,000 penalty
+    was silently waived. The penalty comes off the cash first.
+    """
+    return max(ZERO, min(refund, paid - penalty)).quantize(MONEY)
+
+
+def retained_penalty(item: BookingItem) -> Decimal:
+    """The cancellation fee this item was charged, as recorded at the time.
+
+    Read from the snapshot rather than recomputed: ``refund_due`` answers
+    "what would cancelling cost today", and a cancelled item has no today.
+    """
+    raw = (item.meta or {}).get("retained_penalty")
+    return Decimal(str(raw)).quantize(MONEY) if raw is not None else ZERO
+
+
+def record_penalty(item: BookingItem, penalty: Decimal) -> None:
+    """Snapshot a cancellation fee onto the item.
+
+    ``meta`` is reassigned rather than mutated in place: SQLAlchemy does not
+    see an edited JSONB dict as dirty, so an in-place write never reaches the
+    database.
+    """
+    item.meta = {
+        **(item.meta or {}),
+        "retained_penalty": str(penalty.quantize(MONEY)),
+    }
+
+
 class BookingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -140,11 +176,30 @@ class BookingService:
             raise ForbiddenError("This booking belongs to someone else")
         return booking
 
+    @staticmethod
+    def cancellation_fees(booking: Booking) -> Decimal:
+        """Penalties this booking has already earned and will not give back."""
+        return sum(
+            (
+                retained_penalty(i)
+                for i in booking.items
+                if i.status == BookingItemStatus.CANCELLED
+            ),
+            ZERO,
+        ).quantize(MONEY)
+
     def _recalculate(self, booking: Booking) -> None:
         """Refresh the stored totals from the live items.
 
-        Cancelled and replaced items are excluded: a booking's total is what
-        is still owed for it, not the sum of everything ever attached.
+        Cancelled and replaced items leave the *subtotal*: that figure is what
+        is still owed for services, not the sum of everything ever attached.
+        Retained cancellation fees are added back into the *total*, because
+        that money was genuinely earned and is not going anywhere. Without
+        them, cancelling a 10,000 component on a 50% penalty dropped the total
+        by the full 10,000 while 5,000 of penalty money stayed captured, and
+        the booking reported ``amount_paid`` greater than ``total`` -- an
+        overpayment that never happened, and a fee the operator's ledger had
+        nowhere to put.
         """
         subtotal = sum(
             (
@@ -157,7 +212,12 @@ class BookingService:
         booking.subtotal = subtotal.quantize(MONEY)
         booking.total = max(
             ZERO,
-            (subtotal - Decimal(str(booking.discount)) + Decimal(str(booking.tax))),
+            (
+                subtotal
+                - Decimal(str(booking.discount))
+                + Decimal(str(booking.tax))
+                + self.cancellation_fees(booking)
+            ),
         ).quantize(MONEY)
 
     @staticmethod
@@ -365,6 +425,15 @@ class BookingService:
         ``pending_payment`` until the balance clears, which is what lets an
         operator hold a tour on a deposit.
         """
+        # Lock the row before reading the balance. Without this, a double
+        # click -- or two people in a group settling from two devices -- has
+        # both requests read the same outstanding amount, both authorise, and
+        # both capture. The traveller is charged twice for one booking and
+        # ``amount_paid`` ends up at double the total.
+        await self.db.execute(
+            select(Booking.id).where(Booking.id == booking_id).with_for_update()
+        )
+
         booking = await self.get_owned(booking_id, user)
         if booking.status == BookingStatus.CANCELLED:
             raise ConflictError("This booking has been cancelled")
@@ -377,11 +446,20 @@ class BookingService:
         if outstanding <= 0:
             raise ConflictError("This booking is already paid in full")
 
-        charge = (amount or outstanding).quantize(MONEY)
+        charge = (amount if amount is not None else outstanding).quantize(MONEY)
+        if charge <= 0:
+            raise ValidationError("A payment has to be for more than zero")
         if charge > outstanding:
             raise ValidationError(
                 f"That is more than the {booking.currency} {outstanding} outstanding"
             )
+
+        # Inventory is checked when the booking is drafted, but a draft can
+        # sit for hours before anyone pays. Re-check now, while refusing is
+        # still free: declining here costs the traveller nothing, whereas
+        # discovering it after ``capture`` means they have paid for a room the
+        # vendor cannot supply.
+        await self._assert_capacity(booking)
 
         payment = Payment(
             booking_id=booking.id,
@@ -444,6 +522,49 @@ class BookingService:
         await self.db.commit()
         return self.serialise(await self._load(booking.id))
 
+    async def _assert_capacity(self, booking: Booking) -> None:
+        """Refuse to take money for inventory that has since gone.
+
+        The availability rows are locked as they are read, so two payments
+        racing for the last seat serialise here rather than both clamping
+        against ``capacity_total`` in ``_reserve_capacity`` and quietly
+        overbooking the vendor.
+        """
+        for item in booking.items:
+            if item.status not in LIVE_ITEM_STATUSES or item.service_id is None:
+                continue
+            avail = (
+                await self.db.execute(
+                    select(ServiceAvailability)
+                    .where(
+                        ServiceAvailability.service_id == item.service_id,
+                        ServiceAvailability.on_date == item.service_date,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            # No published limit for that date means there is no limit to hit.
+            if avail is None:
+                continue
+            if avail.is_blocked:
+                raise ConflictError(
+                    f"{item.title} is no longer available on {item.service_date}. "
+                    "Nothing has been charged."
+                )
+            remaining = avail.capacity_total - avail.capacity_booked
+            if remaining < item.quantity:
+                raise ConflictError(
+                    f"{item.title} has only {max(0, remaining)} left on "
+                    f"{item.service_date} but {item.quantity} are on this booking. "
+                    "Nothing has been charged -- adjust or remove the component "
+                    "and try again.",
+                    details={
+                        "item_id": str(item.id),
+                        "requested": item.quantity,
+                        "remaining": max(0, remaining),
+                    },
+                )
+
     async def _reserve_capacity(self, booking: Booking) -> None:
         """Consume published capacity for every confirmed item.
 
@@ -467,10 +588,28 @@ class BookingService:
                 avail.capacity_total, avail.capacity_booked + item.quantity
             )
 
+    async def _release_capacity(self, item: BookingItem) -> None:
+        """Hand a seat back to the pool when an item stops being live."""
+        if item.service_id is None:
+            return
+        avail = (
+            await self.db.execute(
+                select(ServiceAvailability).where(
+                    ServiceAvailability.service_id == item.service_id,
+                    ServiceAvailability.on_date == item.service_date,
+                )
+            )
+        ).scalar_one_or_none()
+        if avail is not None:
+            avail.capacity_booked = max(0, avail.capacity_booked - item.quantity)
+
     async def cancel_item(
         self, booking_id: uuid.UUID, item_id: uuid.UUID, user: User
     ) -> dict:
         """Cancel one component and refund what its terms allow."""
+        await self.db.execute(
+            select(Booking.id).where(Booking.id == booking_id).with_for_update()
+        )
         booking = await self.get_owned(booking_id, user)
         item = next((i for i in booking.items if i.id == item_id), None)
         if item is None:
@@ -479,38 +618,19 @@ class BookingService:
             raise ConflictError("That component is already cancelled or replaced")
 
         refund, penalty, reason = refund_due(item)
+        paid = self.amount_paid(booking)
+        refunded = await self._refund(
+            booking, refundable_cash(paid, refund, penalty), what=item.title
+        )
+
+        # Only now is anything changed: the gateway has either returned the
+        # money or raised, so the component is never left cancelled with the
+        # refund still outstanding.
         item.status = BookingItemStatus.CANCELLED
+        if paid > 0:
+            record_penalty(item, penalty)
 
-        # Release the seat it was holding.
-        if item.service_id is not None:
-            avail = (
-                await self.db.execute(
-                    select(ServiceAvailability).where(
-                        ServiceAvailability.service_id == item.service_id,
-                        ServiceAvailability.on_date == item.service_date,
-                    )
-                )
-            ).scalar_one_or_none()
-            if avail is not None:
-                avail.capacity_booked = max(0, avail.capacity_booked - item.quantity)
-
-        if refund > 0 and self.amount_paid(booking) > 0:
-            refundable = min(refund, self.amount_paid(booking))
-            result = self.gateway.refund("", refundable)
-            self.db.add(
-                Payment(
-                    booking_id=booking.id,
-                    amount=refundable,
-                    currency=booking.currency,
-                    kind=PaymentKind.REFUND,
-                    status=(
-                        PaymentStatus.CAPTURED if result.approved else PaymentStatus.FAILED
-                    ),
-                    method="refund",
-                    gateway_reference=result.reference,
-                    refunded_at=datetime.now(timezone.utc),
-                )
-            )
+        await self._release_capacity(item)
 
         await self.db.flush()
         booking = await self._load(booking.id)
@@ -523,14 +643,67 @@ class BookingService:
         await self.db.commit()
         payload = self.serialise(await self._load(booking.id))
         payload["cancellation"] = {
-            "refunded": refund,
+            "refunded": refunded,
             "penalty": penalty,
             "explanation": reason,
         }
         return payload
 
+    async def _refund(
+        self, booking: Booking, amount: Decimal, *, what: str
+    ) -> Decimal:
+        """Return money to the traveller, or refuse to proceed without it.
+
+        A declined refund used to be recorded as a failed payment row and then
+        ignored: the booking was cancelled, the seats released and the caller
+        got a 200, while the traveller had lost the tour and never seen the
+        money. The failed attempt is still written to the ledger -- support
+        needs the gateway reference -- but it is committed on its own and the
+        cancellation is abandoned, so nothing is given up in exchange for a
+        refund that did not happen.
+        """
+        if amount <= 0:
+            return ZERO
+
+        result = self.gateway.refund("", amount)
+        self.db.add(
+            Payment(
+                booking_id=booking.id,
+                amount=amount,
+                currency=booking.currency,
+                kind=PaymentKind.REFUND,
+                status=(
+                    PaymentStatus.CAPTURED if result.approved else PaymentStatus.FAILED
+                ),
+                method="refund",
+                gateway_reference=result.reference,
+                refunded_at=datetime.now(timezone.utc),
+            )
+        )
+
+        if not result.approved:
+            # Persist the failed attempt, then stop: the item and the booking
+            # are still untouched at this point.
+            await self.db.commit()
+            raise ConflictError(
+                f"The refund of {booking.currency} {amount} for {what} was declined "
+                "by the payment gateway, so nothing has been cancelled. The booking "
+                "is unchanged. Please try again, or quote the gateway reference to "
+                "support.",
+                details={
+                    "gateway_reference": result.reference,
+                    "failure_reason": result.failure_reason,
+                    "amount": str(amount),
+                },
+            )
+
+        return amount
+
     async def cancel(self, booking_id: uuid.UUID, user: User) -> dict:
         """Cancel every live component, refunding each on its own terms."""
+        await self.db.execute(
+            select(Booking.id).where(Booking.id == booking_id).with_for_update()
+        )
         booking = await self.get_owned(booking_id, user)
         live = [i for i in booking.items if i.status in LIVE_ITEM_STATUSES]
         if not live:
@@ -538,30 +711,28 @@ class BookingService:
 
         total_refund = ZERO
         total_penalty = ZERO
+        terms = []
         for item in live:
             refund, penalty, _ = refund_due(item)
             total_refund += refund
             total_penalty += penalty
-            item.status = BookingItemStatus.CANCELLED
+            terms.append((item, penalty))
 
         paid = self.amount_paid(booking)
-        refundable = min(total_refund, paid).quantize(MONEY)
-        if refundable > 0:
-            result = self.gateway.refund("", refundable)
-            self.db.add(
-                Payment(
-                    booking_id=booking.id,
-                    amount=refundable,
-                    currency=booking.currency,
-                    kind=PaymentKind.REFUND,
-                    status=(
-                        PaymentStatus.CAPTURED if result.approved else PaymentStatus.FAILED
-                    ),
-                    method="refund",
-                    gateway_reference=result.reference,
-                    refunded_at=datetime.now(timezone.utc),
-                )
-            )
+        total_penalty = total_penalty.quantize(MONEY)
+        refundable = await self._refund(
+            booking,
+            refundable_cash(paid, total_refund, total_penalty),
+            what=f"booking {booking.reference}",
+        )
+
+        for item, penalty in terms:
+            item.status = BookingItemStatus.CANCELLED
+            if paid > 0:
+                record_penalty(item, penalty)
+            # Cancelling the whole booking released no inventory at all, so a
+            # cancelled tour went on consuming the vendor's capacity forever.
+            await self._release_capacity(item)
 
         booking.status = BookingStatus.CANCELLED
         booking.cancelled_at = datetime.now(timezone.utc)
@@ -573,10 +744,10 @@ class BookingService:
         payload = self.serialise(await self._load(booking.id))
         payload["cancellation"] = {
             "refunded": refundable,
-            "penalty": total_penalty.quantize(MONEY),
+            "penalty": total_penalty,
             "explanation": (
                 f"{len(live)} component(s) cancelled; "
-                f"{booking.currency} {total_penalty.quantize(MONEY)} retained in penalties."
+                f"{booking.currency} {total_penalty} retained in penalties."
             ),
         }
         return payload
@@ -601,6 +772,7 @@ class BookingService:
             "total": total,
             "amount_paid": paid,
             "amount_outstanding": max(ZERO, total - paid).quantize(MONEY),
+            "cancellation_fees": self.cancellation_fees(booking),
             "notes": booking.notes,
             "placed_at": booking.placed_at,
             "confirmed_at": booking.confirmed_at,

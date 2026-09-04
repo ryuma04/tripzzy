@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Loader2,
   CreditCard,
@@ -69,6 +69,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
   const [method, setMethod] = useState<PaymentMethod>("card");
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
   const [payAmount, setPayAmount] = useState<string>("");
+  const [isPaying, setIsPaying] = useState(false);
+  // The guard has to be a ref, not the state above: two clicks in the same
+  // tick both read the pre-update `isPaying`, so a state check would let the
+  // second through. `isPaying` exists only to drive the spinner.
+  const payInFlight = useRef(false);
   const [pendingCancel, setPendingCancel] = useState<{
     booking: Booking;
     item?: BookingItem;
@@ -90,9 +95,22 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
   }, [load]);
 
   const handlePay = async (booking: Booking, amount?: string) => {
+    // Guard the submit itself, not just the button's disabled state. Two
+    // clicks landing in the same React batch both get past `disabled` and
+    // fire two charges; the backend now locks the row and refuses the
+    // second, but the traveller should never see it try.
+    if (payInFlight.current) return;
+    payInFlight.current = true;
+    setIsPaying(true);
     setBusyId(booking.id);
-    const res = await bookingService.pay(booking.id, { amount, method });
-    setBusyId(null);
+    let res;
+    try {
+      res = await bookingService.pay(booking.id, { amount, method });
+    } finally {
+      payInFlight.current = false;
+      setBusyId(null);
+      setIsPaying(false);
+    }
     if (res.success && res.data) {
       setBookings((prev) =>
         prev.map((b) => (b.id === booking.id ? res.data! : b))
@@ -308,7 +326,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                 <NeoButton
                   variant="primary"
                   size="sm"
-                  disabled={isBusy}
+                  disabled={isBusy || isPaying}
                   onClick={() => {
                     setPayingBooking(booking);
                     setPayAmount(String(outstanding));
@@ -329,7 +347,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                   <NeoButton
                     variant="white"
                     size="sm"
-                    disabled={isBusy}
+                    disabled={isBusy || isPaying}
                     onClick={() => {
                       setPayingBooking(booking);
                       setPayAmount((outstanding * 0.2).toFixed(2));
@@ -468,6 +486,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                 variant="primary"
                 size="sm"
                 disabled={
+                  isPaying ||
                   !payAmount ||
                   Number(payAmount) <= 0 ||
                   Number(payAmount) > Number(payingBooking.amount_outstanding)
@@ -477,10 +496,17 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ trip }) => {
                     payAmount === String(payingBooking.amount_outstanding)
                       ? undefined
                       : payAmount;
-                  handlePay(payingBooking, amt);
+                  const target = payingBooking;
                   setPayingBooking(null);
+                  handlePay(target, amt);
                 }}
-                leftIcon={<CreditCard className="w-4 h-4" />}
+                leftIcon={
+                  isPaying ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CreditCard className="w-4 h-4" />
+                  )
+                }
               >
                 Pay ₹{money(payAmount || 0)}
               </NeoButton>

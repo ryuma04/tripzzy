@@ -14,7 +14,7 @@ from app.models.enums import (
     PaymentStatus,
     ServiceType,
 )
-from app.schemas.common import Money
+from app.schemas.common import Money, PositiveMoney
 
 PaymentMethod = Annotated[str, Field(pattern="^(card|upi|netbanking|wallet)$")]
 
@@ -72,7 +72,12 @@ class QuoteRequest(BaseModel):
 class PaymentRequest(BaseModel):
     # Omit to settle the whole outstanding balance. A smaller amount is
     # treated as a deposit and leaves the booking pending.
-    amount: Money | None = None
+    #
+    # ``PositiveMoney``, not ``Money``: zero is falsy, so an ``amount`` of 0
+    # fell through the ``amount or outstanding`` default in the service and
+    # silently charged the entire balance instead of the nothing that was
+    # asked for. Sending 0 is now rejected at the door.
+    amount: PositiveMoney | None = None
     method: PaymentMethod = "card"
 
 
@@ -138,6 +143,9 @@ class BookingResponse(BaseModel):
     total: Decimal
     amount_paid: Decimal
     amount_outstanding: Decimal
+    # Penalties kept from cancelled components. Part of ``total`` -- money the
+    # operator earned that is not coming back.
+    cancellation_fees: Decimal = Decimal("0")
     notes: str | None
     placed_at: datetime | None
     confirmed_at: datetime | None

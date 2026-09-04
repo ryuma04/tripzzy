@@ -65,11 +65,6 @@ const explorerNavItems: NavItem[] = [
     icon: <Compass className="w-5 h-5" />,
   },
   {
-    label: "Community Trips",
-    href: "/community",
-    icon: <Users className="w-5 h-5" />,
-  },
-  {
     label: "Trip Calendar",
     href: "/calendar",
     icon: <CalendarIcon className="w-5 h-5" />,

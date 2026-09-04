@@ -66,9 +66,13 @@ async def get_public_trip(
 )
 async def clone_public_trip(
     share_slug: str,
-    payload: CloneRequest,
     current_user: CurrentUser,
     db: DbSession,
+    # Defaulted, so "clone this as-is" needs no body. Every field on
+    # ``CloneRequest`` is optional -- it only exists to rebase the copy onto a
+    # new title or start date -- but without a default FastAPI still required
+    # the body to be present and rejected a plain POST.
+    payload: CloneRequest = CloneRequest(),
 ):
     """Produces an independent copy (spec section 16)."""
     clone = await CommunityService(db).clone(share_slug, payload, current_user)

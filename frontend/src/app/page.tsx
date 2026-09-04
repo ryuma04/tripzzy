@@ -304,9 +304,6 @@ export default function LandingPage() {
             <Link href="/explore" className="hover:text-white transition-colors">
               Explore
             </Link>
-            <Link href="/community" className="hover:text-white transition-colors">
-              Community
-            </Link>
             <Link href="/calendar" className="hover:text-white transition-colors">
               Calendar
             </Link>

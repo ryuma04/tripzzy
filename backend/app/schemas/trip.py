@@ -16,13 +16,21 @@ from app.schemas.user import PublicUserResponse
 
 
 
+# The AI entry points take the same party-size bound as ``TripCreateRequest``
+# and the ``traveller_count_max`` check constraint on the table. They were
+# plain ``int``, so a value like 1000000000000 was accepted here, spent a
+# model call, and only blew up later against the column -- or, on the
+# select-plan path, was written straight through.
+TravellerCount = Annotated[int, Field(ge=1, le=50)]
+
+
 class TripGenerateRequest(BaseModel):
     destination_ids: list[uuid.UUID]
     start_date: date
     end_date: date
     budget_tier: str
     travel_style: str
-    traveller_count: int = 1
+    traveller_count: TravellerCount = 1
 
 
 class SelectAIPlanRequest(BaseModel):
@@ -30,7 +38,7 @@ class SelectAIPlanRequest(BaseModel):
     destination_ids: list[uuid.UUID] = []
     start_date: date | None = None
     end_date: date | None = None
-    traveller_count: int = 1
+    traveller_count: TravellerCount = 1
 
 
 
@@ -41,7 +49,7 @@ class TripCreateRequest(BaseModel):
     start_date: date
     end_date: date
     budget: Money = Decimal("0")
-    traveller_count: Annotated[int, Field(ge=1, le=50)] = 1
+    traveller_count: TravellerCount = 1
     description: Annotated[str | None, Field(max_length=2000)] = None
     currency: Annotated[str, Field(min_length=3, max_length=3)] = settings.DEFAULT_CURRENCY
     cover_image_url: Annotated[str | None, Field(max_length=500)] = None

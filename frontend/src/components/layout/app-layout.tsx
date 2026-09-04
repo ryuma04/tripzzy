@@ -14,11 +14,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, breadcrumb }) =>
   return (
     <ToastProvider>
       <div className="min-h-screen bg-[#FFF5E9] flex">
-      {/* Fixed Left Sidebar */}
+      {/* Left Sidebar */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:pl-64 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 pt-16 md:pt-0">
         <TopBar />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-in fade-in duration-200">
           {children}

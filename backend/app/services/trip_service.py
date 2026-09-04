@@ -120,6 +120,10 @@ class TripService:
         stops = await ItineraryService(self.db).list_stops(trip.id, user)
         payload["stops"] = stops
 
+        from app.services.logistics_service import LogisticsService
+        transports = await LogisticsService(self.db).list_transport(trip.id, user)
+        payload["transports"] = transports
+
         await self.db.commit()
         return payload
 

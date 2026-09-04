@@ -17,10 +17,18 @@ import {
   LogOut,
   Menu,
   X,
+  Briefcase,
+  AlertTriangle,
+  Wallet,
+  MessageSquare,
+  Activity,
+  Truck,
+  Shield,
+  Send,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { logout, getStoredUser, getCurrentUser, useAuthUser } from "@/lib/auth";
+import { logout, useAuthUser } from "@/lib/auth";
 import { operatorService } from "@/services/operator";
 import type { User } from "@/types";
 
@@ -32,54 +40,142 @@ interface NavItem {
   badgeColor?: string;
 }
 
-const mainNavItems: NavItem[] = [
+// 1. Explorer / Traveller Navigation
+const explorerNavItems: NavItem[] = [
   {
-    label: "Dashboard",
+    label: "Explorer Desk",
     href: "/dashboard",
     icon: <Compass className="w-5 h-5" />,
   },
   {
-    label: "My Trips",
+    label: "My Expeditions",
     href: "/trips",
     icon: <MapPin className="w-5 h-5" />,
   },
   {
-    label: "Create Trip",
+    label: "Plan New Trip",
     href: "/trips/new",
     icon: <PlusCircle className="w-5 h-5" />,
-    badge: "NEW",
-    badgeColor: "bg-[#FCA5A5]",
+    badge: "AI",
+    badgeColor: "bg-[#E51919] text-white",
   },
   {
-    label: "Explore",
+    label: "Discover Places",
     href: "/explore",
     icon: <Compass className="w-5 h-5" />,
   },
   {
-    label: "Community",
+    label: "Community Trips",
     href: "/community",
     icon: <Users className="w-5 h-5" />,
   },
   {
-    label: "Calendar",
+    label: "Trip Calendar",
     href: "/calendar",
     icon: <CalendarIcon className="w-5 h-5" />,
   },
 ];
 
-const adminNavItems: NavItem[] = [
+// 2. Field Coordinator Navigation
+const coordinatorNavItems: NavItem[] = [
   {
-    label: "Admin Panel",
-    href: "/admin",
-    icon: <ShieldAlert className="w-5 h-5" />,
+    label: "Flight Deck",
+    href: "/dashboard",
+    icon: <Compass className="w-5 h-5" />,
+    badge: "LEAD",
+    badgeColor: "bg-[#7C3AED] text-white",
+  },
+  {
+    label: "Assigned Tours",
+    href: "/operator",
+    icon: <Users className="w-5 h-5" />,
+  },
+  {
+    label: "Traveler Inquiries",
+    href: "/operator",
+    icon: <MessageSquare className="w-5 h-5" />,
+  },
+  {
+    label: "Change Requests",
+    href: "/operator",
+    icon: <Activity className="w-5 h-5" />,
+  },
+  {
+    label: "Departure Schedule",
+    href: "/calendar",
+    icon: <CalendarIcon className="w-5 h-5" />,
+  },
+  {
+    label: "Explore Catalog",
+    href: "/explore",
+    icon: <MapPin className="w-5 h-5" />,
   },
 ];
 
+// 3. Tour Operator Navigation
 const operatorNavItems: NavItem[] = [
   {
-    label: "Operations",
+    label: "Command Center",
     href: "/operator",
     icon: <Building2 className="w-5 h-5" />,
+    badge: "OPS",
+    badgeColor: "bg-[#D97706] text-white",
+  },
+  {
+    label: "Tour Departures",
+    href: "/operator",
+    icon: <Truck className="w-5 h-5" />,
+  },
+  {
+    label: "Vendor Contracts",
+    href: "/operator",
+    icon: <Briefcase className="w-5 h-5" />,
+  },
+  {
+    label: "Disruption Radar",
+    href: "/operator",
+    icon: <AlertTriangle className="w-5 h-5" />,
+  },
+  {
+    label: "Revenue & Bookings",
+    href: "/operator",
+    icon: <Wallet className="w-5 h-5" />,
+  },
+  {
+    label: "Expeditions Desk",
+    href: "/dashboard",
+    icon: <Compass className="w-5 h-5" />,
+  },
+];
+
+// 4. Station Administrator Navigation
+const adminNavItems: NavItem[] = [
+  {
+    label: "Station Command",
+    href: "/admin",
+    icon: <ShieldAlert className="w-5 h-5" />,
+    badge: "ROOT",
+    badgeColor: "bg-[#171313] text-white",
+  },
+  {
+    label: "User Directory",
+    href: "/admin",
+    icon: <Users className="w-5 h-5" />,
+  },
+  {
+    label: "Destination Catalog",
+    href: "/admin",
+    icon: <MapPin className="w-5 h-5" />,
+  },
+  {
+    label: "System Telemetry",
+    href: "/admin",
+    icon: <Activity className="w-5 h-5" />,
+  },
+  {
+    label: "Explorer Preview",
+    href: "/dashboard",
+    icon: <Compass className="w-5 h-5" />,
   },
 ];
 
@@ -99,11 +195,8 @@ const secondaryNavItems: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const pathname = usePathname() || "/dashboard";
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { user, isAdmin } = useAuthUser();
+  const { user, isAdmin, isOperator, isCoordinator } = useAuthUser();
 
-  // Operator access comes from being on an operator's roster, not from the
-  // account's platform role, so it cannot be read off the stored user — it
-  // has to be asked for. A 403 here is the ordinary answer for a traveller.
   const [isOperatorStaff, setIsOperatorStaff] = useState(false);
   useEffect(() => {
     if (!user) {
@@ -121,10 +214,18 @@ export const Sidebar: React.FC = () => {
 
   const isActive = (href: string) => {
     if (href === "/admin" && pathname.startsWith("/admin")) return true;
+    if (href === "/operator" && pathname.startsWith("/operator")) return true;
     if (href === "/dashboard" && (pathname === "/" || pathname === "/dashboard")) return true;
     if (href === "/trips" && pathname === "/trips") return true;
     if (href === "/trips/new" && pathname === "/trips/new") return true;
-    if (href !== "/dashboard" && href !== "/admin" && href !== "/trips" && pathname.startsWith(href)) return true;
+    if (
+      href !== "/dashboard" &&
+      href !== "/admin" &&
+      href !== "/operator" &&
+      href !== "/trips" &&
+      pathname.startsWith(href)
+    )
+      return true;
     return false;
   };
 
@@ -133,13 +234,52 @@ export const Sidebar: React.FC = () => {
     window.location.href = "/login";
   };
 
+  // Determine current active role navigation
+  const currentNavItems = isAdmin
+    ? adminNavItems
+    : isOperator || user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager"
+    ? operatorNavItems
+    : isCoordinator || user?.role === "coordinator" || user?.operator_role === "coordinator"
+    ? coordinatorNavItems
+    : explorerNavItems;
+
+  const roleLabel = isAdmin
+    ? "Station Admin"
+    : isOperator || user?.role === "operator"
+    ? "Operator Mission"
+    : isCoordinator || user?.role === "coordinator"
+    ? "Coordinator Deck"
+    : "Explorer Station";
+
+  const roleBadge = isAdmin
+    ? "ADMIN"
+    : isOperator || user?.role === "operator"
+    ? "OPERATOR"
+    : isCoordinator || user?.role === "coordinator"
+    ? "COORDINATOR"
+    : "EXPLORER";
+
+  const roleBadgeColor = isAdmin
+    ? "bg-[#171313]"
+    : isOperator || user?.role === "operator"
+    ? "bg-[#D97706]"
+    : isCoordinator || user?.role === "coordinator"
+    ? "bg-[#7C3AED]"
+    : "bg-[#15803D]";
+
+  const homeRedirect = isAdmin
+    ? "/admin"
+    : isOperator || user?.role === "operator"
+    ? "/operator"
+    : "/dashboard";
+
   const SidebarContent = () => (
     <div className="flex flex-col h-full justify-between p-4 bg-[#EAD7C0] text-[#171313] border-r-[4px] border-[#171313] select-none shadow-[2px_0px_10px_rgba(23,19,19,0.06)]">
       {/* Brand Header with Official Tripzyy Logo */}
       <div>
         <div className="mb-6">
           <Link
-            href={isAdmin ? "/admin" : "/dashboard"}
+            href={homeRedirect}
             onClick={() => setIsMobileOpen(false)}
             className="flex items-center justify-center px-3 py-2.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform block"
           >
@@ -147,34 +287,25 @@ export const Sidebar: React.FC = () => {
           </Link>
         </div>
 
-        {/* Navigation Category Label */}
-        <div className="px-3 mb-2 flex items-center justify-between">
-          <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-700">
-            {isAdmin ? "Admin Station" : "Explorer Menu"}
+        {/* Dynamic Navigation Category Label */}
+        <div className="px-3 mb-2.5 flex items-center justify-between">
+          <span className="font-display font-black text-[10px] uppercase tracking-widest text-neutral-800">
+            {roleLabel}
           </span>
           <span
-            className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border border-[#171313] ${
-              isAdmin
-                ? "bg-[#E51919] text-white"
-                : "bg-[#15803D] text-white"
-            }`}
+            className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border border-[#171313] text-white shadow-[1px_1px_0px_#171313] ${roleBadgeColor}`}
           >
-            {isAdmin ? "ADMIN" : "USER"}
+            {roleBadge}
           </span>
         </div>
 
-        {/* Main Nav Links */}
+        {/* Role-Specific Main Nav Links */}
         <nav className="flex flex-col gap-1.5">
-          {(isAdmin
-            ? adminNavItems
-            : isOperatorStaff
-              ? [...mainNavItems, ...operatorNavItems]
-              : mainNavItems
-          ).map((item) => {
+          {currentNavItems.map((item, idx) => {
             const active = isActive(item.href);
             return (
               <Link
-                key={item.href}
+                key={`${item.href}-${idx}`}
                 href={item.href}
                 onClick={() => setIsMobileOpen(false)}
                 className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl font-display font-bold text-sm tracking-wide border-[3px] transition-all duration-100 ${
@@ -204,62 +335,82 @@ export const Sidebar: React.FC = () => {
             );
           })}
         </nav>
+
+        {/* Secondary Links */}
+        <div className="mt-6 pt-4 border-t-2 border-[#D9C3B0]/80">
+          <div className="px-3 mb-2">
+            <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-600">
+              Account & System
+            </span>
+          </div>
+          <nav className="flex flex-col gap-1.5">
+            {secondaryNavItems.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsMobileOpen(false)}
+                  className={`flex items-center justify-between px-3.5 py-2 rounded-xl font-display font-bold text-xs tracking-wide border-[2px] transition-all duration-100 ${
+                    active
+                      ? "bg-[#FFFFFF] text-[#171313] border-[#171313] shadow-[2px_2px_0px_#171313]"
+                      : "border-transparent text-neutral-700 hover:bg-[#DAC0A3] hover:border-[#171313]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-neutral-700">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </div>
 
-      {/* Footer Nav & User Profile */}
-      <div className="pt-4 border-t-[3px] border-[#171313] flex flex-col gap-2">
-        <div className="px-3 mb-1">
-          <span className="font-display font-extrabold text-[10px] uppercase tracking-widest text-neutral-700">
-            Account & System
-          </span>
-        </div>
-
-        {secondaryNavItems.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setIsMobileOpen(false)}
-              className={`flex items-center gap-3 px-3.5 py-2 rounded-xl font-display font-bold text-sm border-[2px] transition-all duration-100 ${
-                active
-                  ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313]"
-                  : "border-transparent text-[#171313] hover:bg-[#DAC0A3] hover:border-[#171313]"
-              }`}
-            >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-
-        {/* User Card */}
-        <div className="mt-2 p-2.5 bg-[#FFFFFF] border-[2px] border-[#171313] rounded-xl flex items-center justify-between shadow-[2px_2px_0px_#171313]">
+      {/* User Profile Pill & Sign Out */}
+      <div className="pt-4 border-t-2 border-[#D9C3B0]/80">
+        <div className="flex items-center justify-between p-2 rounded-xl bg-[#FFFFFF] border-[2.5px] border-[#171313] shadow-[2px_2px_0px_#171313]">
           <Link
             href="/profile"
             onClick={() => setIsMobileOpen(false)}
-            className="flex items-center gap-2.5 truncate flex-1 min-w-0"
+            className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity"
           >
             <Avatar
-              src={user?.avatar_url}
-              name={user ? `${user.first_name} ${user.last_name}` : "Explorer"}
+              name={
+                user
+                  ? `${user.first_name} ${user.last_name}`
+                  : "User"
+              }
               size="sm"
             />
-            <div className="truncate">
-              <div suppressHydrationWarning className="font-display font-extrabold text-xs text-[#171313] truncate leading-tight">
-                {user ? `${user.first_name} ${user.last_name}` : "Explorer"}
-              </div>
-              <div suppressHydrationWarning className="text-[10px] font-bold text-neutral-500 uppercase">
-                {user?.role || "user"}
-              </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-display font-black text-xs text-[#171313] truncate">
+                {user
+                  ? `${user.first_name} ${user.last_name}`
+                  : "Traveler"}
+              </span>
+              <span
+                className={`text-[9px] font-black uppercase tracking-wider ${
+                  isAdmin
+                    ? "text-[#171313]"
+                    : isOperator || user?.role === "operator"
+                    ? "text-[#D97706]"
+                    : isCoordinator || user?.role === "coordinator"
+                    ? "text-[#7C3AED]"
+                    : "text-[#15803D]"
+                }`}
+              >
+                {roleBadge}
+              </span>
             </div>
           </Link>
           <button
             onClick={handleLogout}
-            title="Log Out"
-            className="p-1.5 rounded-lg border border-[#171313] bg-[#EAD7C0] hover:bg-[#E51919] hover:text-white transition-colors cursor-pointer text-[#171313] ml-2 flex-shrink-0"
+            title="Sign Out"
+            className="p-1.5 text-[#171313] hover:text-[#E51919] hover:bg-neutral-100 rounded-lg border border-transparent hover:border-[#171313] transition-colors ml-1"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -268,45 +419,57 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Desktop Fixed Left Sidebar */}
-      <aside className="hidden lg:block fixed top-0 left-0 bottom-0 w-64 z-30">
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden md:block w-64 h-screen sticky top-0 flex-shrink-0 z-30">
         <SidebarContent />
       </aside>
 
-      {/* Mobile Top Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-[#EAD7C0] border-b-[3px] border-[#171313] z-40 px-4 flex items-center justify-between">
-        <Link href={isAdmin ? "/admin" : "/dashboard"} className="flex items-center gap-2">
-          <TripzyyLogo size="sm" />
+      {/* Mobile Top Header Toggle */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#FFF5E9] border-b-[3px] border-[#171313] z-40 px-4 flex items-center justify-between shadow-[0_2px_4px_rgba(23,19,19,0.05)]">
+        <Link href={homeRedirect} className="flex items-center">
+          <TripzyyLogo size="md" />
         </Link>
         <button
-          onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="p-2 rounded-xl border-[2px] border-[#171313] bg-[#E51919] shadow-[2px_2px_0px_#171313] text-white cursor-pointer"
+          onClick={() => setIsMobileOpen(true)}
+          className="p-2 border-[2.5px] border-[#171313] rounded-xl bg-[#FFFFFF] shadow-[2px_2px_0px_#171313] hover:bg-[#FAF7F2] transition-colors"
+          aria-label="Open Navigation Menu"
         >
-          {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          <Menu className="w-6 h-6 text-[#171313]" />
         </button>
       </div>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Drawer Overlay */}
       <AnimatePresence>
         {isMobileOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 flex">
+          <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileOpen(false)}
-              className="fixed inset-0 bg-[#171313]/70 backdrop-blur-xs"
+              className="fixed inset-0 bg-neutral-900/60 z-50 md:hidden backdrop-blur-xs"
             />
             <motion.div
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
-              transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-              className="relative w-72 max-w-[85vw] h-full z-10"
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-[#EAD7C0] z-50 md:hidden border-r-[4px] border-[#171313] shadow-2xl"
             >
-              <SidebarContent />
+              <div className="relative h-full flex flex-col">
+                <button
+                  onClick={() => setIsMobileOpen(false)}
+                  className="absolute top-4 right-4 p-1.5 border-[2px] border-[#171313] rounded-lg bg-[#FFFFFF] shadow-[2px_2px_0px_#171313] z-10"
+                  aria-label="Close Navigation"
+                >
+                  <X className="w-5 h-5 text-[#171313]" />
+                </button>
+                <div className="h-full overflow-y-auto">
+                  <SidebarContent />
+                </div>
+              </div>
             </motion.div>
-          </div>
+          </>
         )}
       </AnimatePresence>
     </>

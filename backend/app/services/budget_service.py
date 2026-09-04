@@ -268,7 +268,10 @@ class BudgetService:
         window_start = start or date.today() - timedelta(days=30)
         window_end = end or date.today() + timedelta(days=180)
 
-        rows = (
+        events: list[dict] = []
+
+        # 1. Activities
+        activity_rows = (
             await self.db.execute(
                 select(
                     ItineraryActivity,
@@ -284,18 +287,12 @@ class BudgetService:
                     ItineraryActivity.activity_date >= window_start,
                     ItineraryActivity.activity_date <= window_end,
                 )
-                .order_by(
-                    ItineraryActivity.activity_date, ItineraryActivity.start_time
-                )
             )
         ).all()
-
-        return {
-            "start": window_start,
-            "end": window_end,
-            "events": [
+        for activity, city, trip_id, trip_title in activity_rows:
+            events.append(
                 {
-                    "id": str(activity.id),
+                    "id": f"act_{activity.id}",
                     "type": "activity",
                     "date": activity.activity_date,
                     "start_time": activity.start_time,
@@ -306,6 +303,112 @@ class BudgetService:
                     "trip_title": trip_title,
                     "cost": activity.estimated_cost,
                 }
-                for activity, city, trip_id, trip_title in rows
-            ],
+            )
+
+        # 2. Stops (Arrival)
+        stop_rows = (
+            await self.db.execute(
+                select(TripStop, Trip.id, Trip.title)
+                .join(Trip, TripStop.trip_id == Trip.id)
+                .where(
+                    Trip.user_id == user.id,
+                    Trip.deleted_at.is_(None),
+                )
+            )
+        ).all()
+        for stop, trip_id, trip_title in stop_rows:
+            if window_start <= stop.arrival_date <= window_end:
+                events.append(
+                    {
+                        "id": f"stop_arr_{stop.id}",
+                        "type": "stop",
+                        "date": stop.arrival_date,
+                        "start_time": None,
+                        "end_time": None,
+                        "title": f"Arrive in {stop.city_name}",
+                        "city": stop.city_name,
+                        "trip_id": str(trip_id),
+                        "trip_title": trip_title,
+                        "cost": Decimal("0"),
+                    }
+                )
+
+        # 3. Accommodations (Check-in)
+        acc_rows = (
+            await self.db.execute(
+                select(Accommodation, TripStop.city_name, Trip.id, Trip.title)
+                .join(TripStop, Accommodation.stop_id == TripStop.id)
+                .join(Trip, TripStop.trip_id == Trip.id)
+                .where(
+                    Trip.user_id == user.id,
+                    Trip.deleted_at.is_(None),
+                    Accommodation.check_in >= window_start,
+                    Accommodation.check_in <= window_end,
+                )
+            )
+        ).all()
+        for acc, city, trip_id, trip_title in acc_rows:
+            events.append(
+                {
+                    "id": f"acc_{acc.id}",
+                    "type": "accommodation",
+                    "date": acc.check_in,
+                    "start_time": None,
+                    "end_time": None,
+                    "title": f"Check-in: {acc.name}",
+                    "city": city,
+                    "trip_id": str(trip_id),
+                    "trip_title": trip_title,
+                    "cost": acc.estimated_cost,
+                }
+            )
+
+        # 4. Transports
+        transport_rows = (
+            await self.db.execute(
+                select(Transport, Trip.id, Trip.title)
+                .options(
+                    selectinload(Transport.origin_stop),
+                    selectinload(Transport.destination_stop),
+                )
+                .join(Trip, Transport.trip_id == Trip.id)
+                .where(
+                    Trip.user_id == user.id,
+                    Trip.deleted_at.is_(None),
+                )
+            )
+        ).all()
+        for trans, trip_id, trip_title in transport_rows:
+            dep_date = trans.departure_time.date()
+            if window_start <= dep_date <= window_end:
+                orig = trans.origin_stop.city_name if trans.origin_stop else "Departure"
+                dest = trans.destination_stop.city_name if trans.destination_stop else "Arrival"
+                mode = trans.transport_type.value.upper() if hasattr(trans.transport_type, "value") else str(trans.transport_type).upper()
+                events.append(
+                    {
+                        "id": f"trans_{trans.id}",
+                        "type": "transport",
+                        "date": dep_date,
+                        "start_time": trans.departure_time.time(),
+                        "end_time": trans.arrival_time.time(),
+                        "title": f"{mode}: {orig} → {dest}",
+                        "city": orig,
+                        "trip_id": str(trip_id),
+                        "trip_title": trip_title,
+                        "cost": trans.cost,
+                    }
+                )
+
+        events.sort(
+            key=lambda e: (
+                e["date"],
+                0 if e["start_time"] is None else 1,
+                str(e["start_time"] or ""),
+            )
+        )
+
+        return {
+            "start": window_start,
+            "end": window_end,
+            "events": events,
         }

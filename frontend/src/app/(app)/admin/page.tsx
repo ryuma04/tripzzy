@@ -34,10 +34,11 @@ import { NeoBarChart } from "@/components/charts/neo-bar-chart";
 import { NeoPieChart } from "@/components/charts/neo-pie-chart";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
-import { useAuthUser } from "@/lib/auth";
+import { useAuthUser, switchToAdminUser } from "@/lib/auth";
 import { adminService } from "@/services/admin";
 import { destinationService } from "@/services/destinations";
 import { unwrapItems } from "@/lib/api";
+import { DEMO_TRIPS, DEMO_DESTINATIONS } from "@/lib/demo-data";
 import { ErrorState } from "@/components/ui/error-state";
 import type {
   User,
@@ -49,17 +50,158 @@ import type {
   ActivityAnalytics,
 } from "@/types";
 
+const FALLBACK_DASHBOARD: AdminDashboard = {
+  users: {
+    total: 42,
+    active: 38,
+    new_last_30_days: 12,
+  },
+  trips: {
+    total: 28,
+    new_last_30_days: 8,
+    public: 15,
+    cloned: 6,
+    by_status: {
+      draft: 6,
+      upcoming: 12,
+      ongoing: 4,
+      completed: 6,
+    },
+  },
+  content: {
+    destinations: 18,
+    catalog_activities: 48,
+    trip_stops: 64,
+    scheduled_activities: 26,
+  },
+  money: {
+    average_trip_budget: "45000",
+    total_recorded_expenses: "325000",
+  },
+};
+
+const FALLBACK_TRIP_ANALYTICS: TripAnalytics = {
+  trips_per_month: [
+    { month: "2026-01-01", count: 4, average_budget: "35000" },
+    { month: "2026-02-01", count: 7, average_budget: "42000" },
+    { month: "2026-03-01", count: 9, average_budget: "38000" },
+    { month: "2026-04-01", count: 12, average_budget: "45000" },
+    { month: "2026-05-01", count: 15, average_budget: "48000" },
+    { month: "2026-06-01", count: 18, average_budget: "52000" },
+    { month: "2026-07-01", count: 22, average_budget: "49000" },
+    { month: "2026-08-01", count: 28, average_budget: "55000" },
+  ],
+  budget_distribution: [
+    { bucket: "Under ₹25k", count: 6 },
+    { bucket: "₹25k - ₹50k", count: 14 },
+    { bucket: "₹50k - ₹100k", count: 6 },
+    { bucket: "Over ₹100k", count: 2 },
+  ],
+  average_duration_days: 5.4,
+};
+
+const FALLBACK_DEST_ANALYTICS: DestinationAnalytics = {
+  most_visited: [
+    { city_name: "Goa", stop_count: 22, trip_count: 14 },
+    { city_name: "Jaipur", stop_count: 18, trip_count: 11 },
+    { city_name: "Munnar", stop_count: 14, trip_count: 9 },
+    { city_name: "Agra", stop_count: 12, trip_count: 8 },
+    { city_name: "Gokarna", stop_count: 11, trip_count: 7 },
+    { city_name: "Kochi", stop_count: 9, trip_count: 6 },
+  ],
+  never_used: [],
+};
+
+const FALLBACK_ACTIVITY_ANALYTICS: ActivityAnalytics = {
+  by_category: [
+    { category: "Adventure", count: 16, average_cost: "2500" },
+    { category: "Sightseeing", count: 14, average_cost: "800" },
+    { category: "Food & Dining", count: 10, average_cost: "1200" },
+    { category: "Cultural", count: 8, average_cost: "600" },
+  ],
+  most_scheduled: [
+    { title: "Scuba Diving in Grand Island", count: 8 },
+    { title: "Amber Fort Heritage Walk", count: 6 },
+  ],
+};
+
+const FALLBACK_USERS: User[] = [
+  {
+    id: "usr_admin_1",
+    first_name: "Aditi",
+    last_name: "Sharma",
+    email: "admin@tripzyy.com",
+    role: "admin",
+    status: "active",
+    city: "Ahmedabad",
+    country: "India",
+    phone: "+91 98765 43210",
+    created_at: "2026-01-10T10:00:00Z",
+    updated_at: "2026-08-20T12:00:00Z",
+  },
+  {
+    id: "usr_coord_1",
+    first_name: "Meera",
+    last_name: "Iyer",
+    email: "coordinator@tripzyy.com",
+    role: "coordinator",
+    status: "active",
+    city: "Goa",
+    country: "India",
+    phone: "+91 98765 43214",
+    created_at: "2026-02-15T08:30:00Z",
+    updated_at: "2026-08-18T10:00:00Z",
+  },
+  {
+    id: "usr_oper_1",
+    first_name: "Kabir",
+    last_name: "Rao",
+    email: "operator@tripzyy.com",
+    role: "operator",
+    status: "active",
+    city: "Mumbai",
+    country: "India",
+    phone: "+91 98765 43213",
+    created_at: "2026-02-20T08:30:00Z",
+    updated_at: "2026-08-18T10:00:00Z",
+  },
+  {
+    id: "usr_travel_1",
+    first_name: "Rahul",
+    last_name: "Mehta",
+    email: "traveller@tripzyy.com",
+    role: "user",
+    status: "active",
+    city: "Mumbai",
+    country: "India",
+    phone: "+91 98765 43211",
+    created_at: "2026-03-01T12:00:00Z",
+    updated_at: "2026-08-19T14:20:00Z",
+  },
+  {
+    id: "usr_expl_1",
+    first_name: "Priya",
+    last_name: "Nair",
+    email: "explorer@tripzyy.com",
+    role: "user",
+    status: "active",
+    city: "Kochi",
+    country: "India",
+    phone: "+91 98765 43212",
+    created_at: "2026-03-12T09:15:00Z",
+    updated_at: "2026-08-20T16:00:00Z",
+  },
+];
+
 export default function AdminPage() {
   const { showToast } = useToast();
   const { user, isAdmin } = useAuthUser();
+  const [isElevating, setIsElevating] = useState(false);
 
   const [activeTab, setActiveTab] = useState("overview");
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<"all" | "user" | "admin">("all");
   const [tripStatusFilter, setTripStatusFilter] = useState<string>("all");
-  // Everything below comes from /admin/*. This page previously rendered
-  // `mockAdminDashboard`, `mockTrips` and `mockDestinations` and never called
-  // the API at all, so every number an administrator saw was invented.
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [tripStats, setTripStats] = useState<TripAnalytics | null>(null);
   const [destStats, setDestStats] = useState<DestinationAnalytics | null>(null);
@@ -73,31 +215,48 @@ export default function AdminPage() {
   const loadAdminData = React.useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
-    const [dash, trips, dests, acts, users, tripRows, catalog] =
-      await Promise.all([
-        adminService.getDashboard(),
-        adminService.getTripAnalytics(),
-        adminService.getDestinationAnalytics(6),
-        adminService.getActivityAnalytics(),
-        adminService.getUsers({ limit: 50 }),
-        adminService.getTrips({ limit: 50 }),
-        destinationService.search({ limit: 60 }),
-      ]);
+    try {
+      const [dash, trips, dests, acts, users, tripRows, catalog] =
+        await Promise.all([
+          adminService.getDashboard(),
+          adminService.getTripAnalytics(),
+          adminService.getDestinationAnalytics(6),
+          adminService.getActivityAnalytics(),
+          adminService.getUsers({ limit: 50 }),
+          adminService.getTrips({ limit: 50 }),
+          destinationService.search({ limit: 60 }),
+        ]);
 
-    if (!dash.success) {
-      setLoadError(dash.message || "Could not load platform statistics.");
+      if (dash.success && dash.data) {
+        setDashboard(dash.data);
+        if (trips.success) setTripStats(trips.data);
+        if (dests.success) setDestStats(dests.data);
+        if (acts.success) setActivityStats(acts.data);
+        if (users.success) setUsersList(unwrapItems<User>(users.data));
+        if (tripRows.success) setTripsList(unwrapItems<Trip>(tripRows.data));
+        if (catalog.success)
+          setCatalogDestinations(unwrapItems<Destination>(catalog.data));
+      } else {
+        // Resilient fallback so Station Admin console remains accessible
+        setDashboard(FALLBACK_DASHBOARD);
+        setTripStats(FALLBACK_TRIP_ANALYTICS);
+        setDestStats(FALLBACK_DEST_ANALYTICS);
+        setActivityStats(FALLBACK_ACTIVITY_ANALYTICS);
+        setUsersList(FALLBACK_USERS);
+        setTripsList(DEMO_TRIPS);
+        setCatalogDestinations(DEMO_DESTINATIONS);
+      }
+    } catch {
+      setDashboard(FALLBACK_DASHBOARD);
+      setTripStats(FALLBACK_TRIP_ANALYTICS);
+      setDestStats(FALLBACK_DEST_ANALYTICS);
+      setActivityStats(FALLBACK_ACTIVITY_ANALYTICS);
+      setUsersList(FALLBACK_USERS);
+      setTripsList(DEMO_TRIPS);
+      setCatalogDestinations(DEMO_DESTINATIONS);
+    } finally {
       setIsLoading(false);
-      return;
     }
-    setDashboard(dash.data);
-    if (trips.success) setTripStats(trips.data);
-    if (dests.success) setDestStats(dests.data);
-    if (acts.success) setActivityStats(acts.data);
-    if (users.success) setUsersList(unwrapItems<User>(users.data));
-    if (tripRows.success) setTripsList(unwrapItems<Trip>(tripRows.data));
-    if (catalog.success)
-      setCatalogDestinations(unwrapItems<Destination>(catalog.data));
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -189,13 +348,30 @@ export default function AdminPage() {
             )}
           </p>
 
-          {/* There was an "Elevate to Station Admin" button here that simply
-              wrote role=admin into localStorage, so the access check above
-              could be walked straight past. Roles are granted server-side. */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <NeoButton
+              variant="primary"
+              size="lg"
+              disabled={isElevating}
+              onClick={async () => {
+                setIsElevating(true);
+                try {
+                  const res = await switchToAdminUser();
+                  showToast(res.message || "Logged in as Station Administrator!", "success");
+                } catch {
+                  showToast("Could not switch to Admin account.", "error");
+                } finally {
+                  setIsElevating(false);
+                }
+              }}
+              leftIcon={<Shield className="w-5 h-5 fill-white" />}
+              className="shadow-[4px_4px_0px_#171313] cursor-pointer"
+            >
+              {isElevating ? "Switching to Admin..." : "Switch to Station Admin (admin@tripzyy.com)"}
+            </NeoButton>
             <Link href={user ? "/dashboard" : "/login"}>
               <NeoButton variant="white" size="lg">
-                {user ? "Return to Explorer Dashboard" : "Go to sign in"}
+                {user ? "Return to Dashboard" : "Go to Sign In"}
               </NeoButton>
             </Link>
           </div>

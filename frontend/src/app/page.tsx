@@ -285,7 +285,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="p-2 bg-[#FFFFFF] rounded-2xl border-2 border-[#171313] shadow-[3px_3px_0px_#FFFFFF]">
-              <TripzyyLogo size="sm" />
+              <TripzyyLogo variant="icon" size="sm" />
             </div>
             <div>
               <div className="font-display font-black text-lg text-white tracking-tight">

@@ -37,7 +37,7 @@ import { ItineraryBuilder } from "@/components/itinerary/itinerary-builder";
 import { ItineraryView } from "@/components/itinerary/itinerary-view";
 import { BudgetOverview } from "@/components/budget/budget-overview";
 import { BookingPanel } from "@/components/booking/booking-panel";
-
+import { CheckoutModal } from "@/components/booking/checkout-modal";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
@@ -56,6 +56,7 @@ export default function TripDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("itinerary");
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -218,6 +219,14 @@ export default function TripDetailPage() {
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
+          <NeoButton
+            variant="primary"
+            size="sm"
+            leftIcon={<Ticket className="w-4 h-4 stroke-[2.5]" />}
+            onClick={() => setIsCheckoutOpen(true)}
+          >
+            Book / Checkout
+          </NeoButton>
           <NeoButton
             variant="yellow"
             size="sm"
@@ -561,6 +570,18 @@ export default function TripDetailPage() {
         onClose={() => setIsSplitModalOpen(false)}
         initialTrip={trip}
       />
+
+      {/* Checkout & Booking Modal */}
+      {trip && (
+        <CheckoutModal
+          trip={trip}
+          isOpen={isCheckoutOpen}
+          onClose={() => setIsCheckoutOpen(false)}
+          onBookingCompleted={() => {
+            setActiveTab("bookings");
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -61,9 +61,17 @@ class Settings(BaseSettings):
     OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, ge=0)
     OTP_MAX_SENDS_PER_HOUR: int = Field(default=5, ge=1)
 
-    # --- Rate limiting (R5) ---
+    # --- Rate limiting (R5) & Proxy security ---
     RATE_LIMIT_ENABLED: bool = True
     AUTH_RATE_LIMIT_PER_MINUTE: int = Field(default=10, ge=1)
+    BEHIND_TRUSTED_PROXY: bool = False
+    TRUSTED_PROXIES: str = "127.0.0.1,::1"
+
+    # --- Payment provider configuration ---
+    PAYMENT_PROVIDER: str = "simulated"
+    PAYMENT_SIMULATED_FAILURE_RATE: float = 0.0
+    STRIPE_SECRET_KEY: str | None = None
+    RAZORPAY_KEY_SECRET: str | None = None
 
     # --- Business defaults ---
     DEFAULT_CURRENCY: str = "INR"
@@ -120,6 +128,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def trusted_proxy_list(self) -> list[str]:
+        return [p.strip() for p in self.TRUSTED_PROXIES.split(",") if p.strip()]
 
     @property
     def email_configured(self) -> bool:

@@ -13,6 +13,7 @@ import {
   Shield,
   Compass,
   ArrowRightLeft,
+  Building2,
 } from "lucide-react";
 import { NeoButton } from "@/components/ui/neo-button";
 import { Avatar } from "@/components/ui/avatar";
@@ -66,7 +67,7 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-20 w-full h-20 bg-[#FFF5E9]/90 backdrop-blur-md border-b-[3px] border-[#171313] px-6 lg:px-8 flex items-center justify-between gap-4 select-none">
+    <header className="sticky top-16 md:top-0 z-20 w-full h-20 bg-[#FFF5E9]/90 backdrop-blur-md border-b-[3px] border-[#171313] px-6 lg:px-8 flex items-center justify-between gap-4 select-none">
       {/* Search Input */}
       <form
         onSubmit={handleSearchSubmit}
@@ -89,18 +90,76 @@ export const TopBar: React.FC = () => {
         {/* Role indicator. Read-only: the role comes from the server on the
             access token. This used to be a button that flipped it in
             localStorage, which was a one-click self-promotion to admin. */}
-        {isAdmin && (
+        {/* Dynamic Role Badge */}
+        {isAdmin ? (
           <span
-            title="Signed in as an administrator"
-            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#E51919] text-white"
+            title="Signed in as Station Administrator"
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#171313] text-white"
+          >
+            <Shield className="w-3.5 h-3.5 text-[#E51919]" />
+            <span>Admin</span>
+          </span>
+        ) : user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
+          <span
+            title="Signed in as Tour Operator"
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#D97706] text-white"
           >
             <Shield className="w-3.5 h-3.5 fill-white" />
-            <span>Admin</span>
+            <span>Operator</span>
+          </span>
+        ) : user?.role === "coordinator" || user?.operator_role === "coordinator" ? (
+          <span
+            title="Signed in as Field Coordinator"
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#7C3AED] text-white"
+          >
+            <Compass className="w-3.5 h-3.5 text-white" />
+            <span>Coordinator</span>
+          </span>
+        ) : (
+          <span
+            title="Signed in as Explorer"
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#15803D] text-white"
+          >
+            <Compass className="w-3.5 h-3.5 text-white" />
+            <span>Explorer</span>
           </span>
         )}
 
-        {/* Quick Create Trip Button (for users only) */}
-        {!isAdmin && (
+        {/* Quick Action Button based on Role */}
+        {isAdmin ? (
+          <Link href="/admin">
+            <NeoButton
+              variant="primary"
+              size="sm"
+              leftIcon={<Shield className="w-4 h-4" />}
+              className="hidden sm:inline-flex"
+            >
+              Admin Console
+            </NeoButton>
+          </Link>
+        ) : user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
+          <Link href="/operator">
+            <NeoButton
+              variant="primary"
+              size="sm"
+              leftIcon={<Building2 className="w-4 h-4" />}
+              className="hidden sm:inline-flex"
+            >
+              Operations Console
+            </NeoButton>
+          </Link>
+        ) : user?.role === "coordinator" || user?.operator_role === "coordinator" ? (
+          <Link href="/dashboard">
+            <NeoButton
+              variant="primary"
+              size="sm"
+              leftIcon={<Compass className="w-4 h-4" />}
+              className="hidden sm:inline-flex"
+            >
+              Flight Deck
+            </NeoButton>
+          </Link>
+        ) : (
           <Link href="/trips/new">
             <NeoButton
               variant="primary"

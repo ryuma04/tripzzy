@@ -41,6 +41,9 @@ class UserResponse(BaseModel):
     status: UserStatus
     is_email_verified: bool
     avatar_url: str | None = None
+    operator_role: str | None = None
+    operator_id: uuid.UUID | None = None
+    operator_name: str | None = None
     created_at: datetime
 
 

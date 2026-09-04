@@ -17,6 +17,14 @@ import {
   ChevronUp,
   Globe2,
   Scale,
+  Hotel,
+  Train,
+  Plane,
+  Bus,
+  Car,
+  Ship,
+  ExternalLink,
+  Navigation,
 } from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
@@ -36,6 +44,9 @@ import type {
   ItineraryActivity,
   Destination,
   ServiceType,
+  Accommodation,
+  Transport,
+  TransportType,
 } from "@/types";
 
 /** Nights between two ISO dates; at least one, so a day trip still prices. */
@@ -63,6 +74,7 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
 }) => {
   const { showToast } = useToast();
   const [stops, setStops] = useState<TripStop[]>(trip.stops || []);
+  const [transports, setTransports] = useState<Transport[]>(trip.transports || []);
   const [comparing, setComparing] = useState<ComparisonTarget | null>(null);
   const [availableDestinations, setAvailableDestinations] = useState<Destination[]>([]);
 
@@ -84,6 +96,26 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
   const [actStart, setActStart] = useState("10:00");
   const [actEnd, setActEnd] = useState("13:00");
   const [actCost, setActCost] = useState(500);
+
+  // Modal for adding an accommodation to a specific stop
+  const [activeStopForAcc, setActiveStopForAcc] = useState<string | null>(null);
+  const [accName, setAccName] = useState("");
+  const [accCheckIn, setAccCheckIn] = useState(trip.start_date || "2026-10-12");
+  const [accCheckOut, setAccCheckOut] = useState(trip.end_date || "2026-10-18");
+  const [accCost, setAccCost] = useState(3500);
+  const [accAddress, setAccAddress] = useState("");
+  const [accUrl, setAccUrl] = useState("");
+  const [accNotes, setAccNotes] = useState("");
+
+  // Modal for adding transport leg
+  const [isAddTransportOpen, setIsAddTransportOpen] = useState(false);
+  const [transType, setTransType] = useState<TransportType>("train");
+  const [transOriginStopId, setTransOriginStopId] = useState("");
+  const [transDestStopId, setTransDestStopId] = useState("");
+  const [transDepTime, setTransDepTime] = useState(`${trip.start_date || "2026-10-12"}T09:00`);
+  const [transArrTime, setTransArrTime] = useState(`${trip.start_date || "2026-10-12"}T14:00`);
+  const [transCost, setTransCost] = useState(1200);
+  const [transNotes, setTransNotes] = useState("");
 
   useEffect(() => {
     async function loadDestinations() {
@@ -306,6 +338,136 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
     }
   };
 
+  // Sync transports if trip changes
+  useEffect(() => {
+    if (trip.transports) {
+      setTransports(trip.transports);
+    }
+  }, [trip]);
+
+  // Add accommodation to stop
+  const handleAddAccommodation = async () => {
+    if (!activeStopForAcc || !accName.trim()) return;
+    try {
+      const res = await tripService.createAccommodation(activeStopForAcc, {
+        name: accName.trim(),
+        check_in: accCheckIn,
+        check_out: accCheckOut,
+        estimated_cost: Number(accCost),
+        address: accAddress.trim() || undefined,
+        booking_url: accUrl.trim() || undefined,
+        notes: accNotes.trim() || undefined,
+      });
+
+      if (res.success && res.data) {
+        const updatedStops = stops.map((s) => {
+          if (s.id === activeStopForAcc) {
+            return {
+              ...s,
+              accommodations: [...(s.accommodations || []), res.data as Accommodation],
+            };
+          }
+          return s;
+        });
+
+        setStops(updatedStops);
+        setActiveStopForAcc(null);
+        setAccName("");
+        setAccAddress("");
+        setAccUrl("");
+        setAccNotes("");
+        showToast("Accommodation added to stop!", "success");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updatedStops, transports });
+      } else {
+        showToast(res.message || "Failed to add accommodation.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to add accommodation.", "error");
+    }
+  };
+
+  // Delete accommodation
+  const handleDeleteAccommodation = async (stopId: string, accommodationId: string) => {
+    try {
+      const res = await tripService.deleteAccommodation(accommodationId);
+      if (res.success) {
+        const updatedStops = stops.map((s) => {
+          if (s.id === stopId) {
+            return {
+              ...s,
+              accommodations: (s.accommodations || []).filter((a) => a.id !== accommodationId),
+            };
+          }
+          return s;
+        });
+
+        setStops(updatedStops);
+        showToast("Accommodation removed.", "info");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops: updatedStops, transports });
+      } else {
+        showToast(res.message || "Failed to delete accommodation.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to delete accommodation.", "error");
+    }
+  };
+
+  // Add transport leg
+  const handleAddTransport = async () => {
+    if (!transOriginStopId || !transDestStopId) {
+      showToast("Please select origin and destination stops.", "error");
+      return;
+    }
+    if (transOriginStopId === transDestStopId) {
+      showToast("Origin and destination stops must be different.", "error");
+      return;
+    }
+
+    try {
+      const depIso = new Date(transDepTime).toISOString();
+      const arrIso = new Date(transArrTime).toISOString();
+      const res = await tripService.createTransport(trip.id, {
+        transport_type: transType,
+        origin_stop_id: transOriginStopId,
+        destination_stop_id: transDestStopId,
+        departure_time: depIso,
+        arrival_time: arrIso,
+        cost: Number(transCost),
+        notes: transNotes.trim() || undefined,
+      });
+
+      if (res.success && res.data) {
+        const updatedTransports = [...transports, res.data];
+        setTransports(updatedTransports);
+        setIsAddTransportOpen(false);
+        setTransNotes("");
+        showToast("Transport leg added successfully!", "success");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops, transports: updatedTransports });
+      } else {
+        showToast(res.message || "Failed to add transport.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to add transport.", "error");
+    }
+  };
+
+  // Delete transport leg
+  const handleDeleteTransport = async (transportId: string) => {
+    try {
+      const res = await tripService.deleteTransport(transportId);
+      if (res.success) {
+        const updatedTransports = transports.filter((t) => t.id !== transportId);
+        setTransports(updatedTransports);
+        showToast("Transport leg removed.", "info");
+        if (onUpdateTrip) onUpdateTrip({ ...trip, stops, transports: updatedTransports });
+      } else {
+        showToast(res.message || "Failed to delete transport.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to delete transport.", "error");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Top Header Actions */}
@@ -524,11 +686,203 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Stop Accommodations List */}
+                <div className="mt-5 flex flex-col gap-3 pt-4 border-t-2 border-dashed border-neutral-200">
+                  <div className="flex items-center justify-between">
+                    <span className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-600 flex items-center gap-1.5">
+                      <Hotel className="w-3.5 h-3.5 text-[#107038]" />
+                      Stays & Accommodations ({stop.accommodations?.length || 0})
+                    </span>
+                    <NeoButton
+                      variant="cream"
+                      size="sm"
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        setActiveStopForAcc(stop.id);
+                        setAccCheckIn(stop.arrival_date);
+                        setAccCheckOut(stop.departure_date);
+                      }}
+                    >
+                      + Add Stay / Hotel
+                    </NeoButton>
+                  </div>
+
+                  {stop.accommodations && stop.accommodations.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {stop.accommodations.map((acc) => (
+                        <div
+                          key={acc.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-[#F4F9F5] border-2 border-[#171313] rounded-xl shadow-[2px_2px_0px_#171313] hover:bg-white transition-colors"
+                        >
+                          <div className="flex items-start sm:items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-[#E6F4EA] border border-[#171313] flex items-center justify-center text-xs font-bold">
+                              <Hotel className="w-4 h-4 text-[#107038]" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h5 className="font-display font-bold text-sm text-[#171313]">
+                                  {acc.name}
+                                </h5>
+                                {acc.booking_url && (
+                                  <a
+                                    href={acc.booking_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-neutral-400 hover:text-[#107038]"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600 font-medium">
+                                <span>
+                                  {acc.check_in} → {acc.check_out} ({acc.nights || 1} nights)
+                                </span>
+                                {acc.address && <span>• {acc.address}</span>}
+                                {acc.notes && <span>• {acc.notes}</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 self-end sm:self-center">
+                            <span className="font-display font-extrabold text-sm text-[#107038]">
+                              ₹{Number(acc.estimated_cost).toLocaleString("en-IN")}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteAccommodation(stop.id, acc.id)}
+                              className="p-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                              title="Delete Accommodation"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-neutral-300 text-center text-xs text-neutral-500 font-medium">
+                      No hotel or stay added for this stop yet. Click &ldquo;+ Add Stay / Hotel&rdquo; to record lodging.
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Transfers & Transport Legs Between Cities */}
+      <div className="flex flex-col gap-4 p-5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <span className="font-display font-extrabold text-xs uppercase tracking-wider text-[#107038]">
+              Inter-City Logistics
+            </span>
+            <h4 className="font-display font-extrabold text-lg text-[#171313] flex items-center gap-2">
+              <Navigation className="w-5 h-5 text-[#107038]" />
+              Transfers & Transport Legs ({transports.length})
+            </h4>
+          </div>
+
+          <NeoButton
+            variant="cream"
+            size="sm"
+            leftIcon={<Plus className="w-3.5 h-3.5 stroke-[3]" />}
+            onClick={() => {
+              if (stops.length >= 2) {
+                setTransOriginStopId(stops[0].id);
+                setTransDestStopId(stops[1].id);
+              }
+              setIsAddTransportOpen(true);
+            }}
+            disabled={stops.length < 2}
+          >
+            + Add Transfer Leg
+          </NeoButton>
+        </div>
+
+        {stops.length < 2 && (
+          <p className="text-xs text-neutral-500 font-medium">
+            Add at least two destination stops to plan transport connections between them.
+          </p>
+        )}
+
+        {transports.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3">
+            {transports.map((trans) => {
+              const orig = stops.find((s) => s.id === trans.origin_stop_id);
+              const dest = stops.find((s) => s.id === trans.destination_stop_id);
+              const origName = orig?.destination?.name || orig?.city_name || "Origin";
+              const destName = dest?.destination?.name || dest?.city_name || "Destination";
+              const depFormatted = new Date(trans.departure_time).toLocaleString("en-IN", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              const arrFormatted = new Date(trans.arrival_time).toLocaleString("en-IN", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+              return (
+                <div
+                  key={trans.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#FFFDFB] border-2 border-[#171313] rounded-xl shadow-[3px_3px_0px_#171313]"
+                >
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-[#FFF4E6] border-2 border-[#171313] flex items-center justify-center font-bold">
+                      {trans.transport_type === "flight" && <Plane className="w-4 h-4 text-[#E51919]" />}
+                      {trans.transport_type === "train" && <Train className="w-4 h-4 text-[#107038]" />}
+                      {trans.transport_type === "bus" && <Bus className="w-4 h-4 text-[#D97706]" />}
+                      {trans.transport_type === "car" && <Car className="w-4 h-4 text-[#2563EB]" />}
+                      {trans.transport_type === "ferry" && <Ship className="w-4 h-4 text-[#0D9488]" />}
+                      {trans.transport_type === "other" && <Navigation className="w-4 h-4 text-neutral-600" />}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-display font-black text-xs uppercase px-2 py-0.5 bg-neutral-100 border border-[#171313] rounded-md">
+                          {trans.transport_type}
+                        </span>
+                        <span className="font-display font-extrabold text-sm text-[#171313]">
+                          {origName} → {destName}
+                        </span>
+                      </div>
+                      <div className="text-xs text-neutral-600 font-medium mt-1">
+                        <span>{depFormatted} → {arrFormatted}</span>
+                        {trans.notes && <span className="ml-2">• {trans.notes}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 self-end sm:self-center">
+                    <span className="font-display font-extrabold text-sm text-[#171313]">
+                      ₹{Number(trans.cost).toLocaleString("en-IN")}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteTransport(trans.id)}
+                      className="p-1.5 text-neutral-400 hover:text-red-600 cursor-pointer"
+                      title="Delete Transport Leg"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          stops.length >= 2 && (
+            <div className="p-4 rounded-xl border border-dashed border-neutral-300 text-center text-xs text-neutral-500 font-medium">
+              No transfers scheduled yet. Click &ldquo;+ Add Transfer Leg&rdquo; to connect your stops by flight, train, bus, or car.
+            </div>
+          )
+        )}
+      </div>
 
       {/* Bottom Button */}
       <div className="flex justify-center pt-2">
@@ -701,6 +1055,194 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
             </NeoButton>
             <NeoButton variant="yellow" size="sm" onClick={handleAddActivity}>
               Add Activity
+            </NeoButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Add Accommodation to Stop */}
+      <Modal
+        isOpen={activeStopForAcc !== null}
+        onClose={() => setActiveStopForAcc(null)}
+        title="Add Hotel or Lodging Stay"
+        subtitle="Record hotel, resort, hostel, or homestay booking details"
+      >
+        <div className="flex flex-col gap-4">
+          <NeoInput
+            label="Hotel or Property Name"
+            placeholder="e.g. Grand Hyatt Goa / Zostel Mumbai"
+            value={accName}
+            onChange={(e) => setAccName(e.target.value)}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <NeoInput
+              label="Check-in Date"
+              type="date"
+              value={accCheckIn}
+              onChange={(e) => setAccCheckIn(e.target.value)}
+              required
+            />
+            <NeoInput
+              label="Check-out Date"
+              type="date"
+              value={accCheckOut}
+              onChange={(e) => setAccCheckOut(e.target.value)}
+              required
+            />
+          </div>
+
+          <NeoInput
+            label="Total Estimated Cost (₹)"
+            type="number"
+            value={accCost}
+            onChange={(e) => setAccCost(Number(e.target.value))}
+            required
+          />
+
+          <NeoInput
+            label="Address (optional)"
+            placeholder="e.g. Candolim Beach Road, North Goa"
+            value={accAddress}
+            onChange={(e) => setAccAddress(e.target.value)}
+          />
+
+          <NeoInput
+            label="Booking Link / URL (optional)"
+            placeholder="https://..."
+            value={accUrl}
+            onChange={(e) => setAccUrl(e.target.value)}
+          />
+
+          <NeoInput
+            label="Notes (optional)"
+            placeholder="e.g. Ocean view deluxe room, includes breakfast"
+            value={accNotes}
+            onChange={(e) => setAccNotes(e.target.value)}
+          />
+
+          <div className="flex justify-end gap-3 pt-4">
+            <NeoButton
+              variant="white"
+              size="sm"
+              onClick={() => setActiveStopForAcc(null)}
+            >
+              Cancel
+            </NeoButton>
+            <NeoButton variant="primary" size="sm" onClick={handleAddAccommodation}>
+              Add Accommodation
+            </NeoButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Add Transport Leg */}
+      <Modal
+        isOpen={isAddTransportOpen}
+        onClose={() => setIsAddTransportOpen(false)}
+        title="Add Transport / Transfer Leg"
+        subtitle="Connect two destination stops by flight, train, bus, or road transfer"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="font-display font-bold text-xs uppercase tracking-wider text-[#171313]">
+              Transport Mode
+            </label>
+            <select
+              value={transType}
+              onChange={(e) => setTransType(e.target.value as TransportType)}
+              className="w-full bg-[#FFFFFF] text-[#171313] font-bold text-sm border-[3px] border-[#171313] rounded-xl p-3 outline-none shadow-[3px_3px_0px_#171313]"
+            >
+              <option value="flight">Flight (Airplane)</option>
+              <option value="train">Train (Rail)</option>
+              <option value="bus">Bus (Coach)</option>
+              <option value="car">Car / Taxi / Cab</option>
+              <option value="ferry">Ferry / Boat</option>
+              <option value="other">Other Transit</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="font-display font-bold text-xs uppercase tracking-wider text-[#171313]">
+                Origin Stop
+              </label>
+              <select
+                value={transOriginStopId}
+                onChange={(e) => setTransOriginStopId(e.target.value)}
+                className="w-full bg-[#FFFFFF] text-[#171313] font-bold text-sm border-[3px] border-[#171313] rounded-xl p-3 outline-none shadow-[3px_3px_0px_#171313]"
+              >
+                <option value="">Select departure stop</option>
+                {stops.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.destination?.name || s.city_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-display font-bold text-xs uppercase tracking-wider text-[#171313]">
+                Destination Stop
+              </label>
+              <select
+                value={transDestStopId}
+                onChange={(e) => setTransDestStopId(e.target.value)}
+                className="w-full bg-[#FFFFFF] text-[#171313] font-bold text-sm border-[3px] border-[#171313] rounded-xl p-3 outline-none shadow-[3px_3px_0px_#171313]"
+              >
+                <option value="">Select arrival stop</option>
+                {stops.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.destination?.name || s.city_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <NeoInput
+              label="Departure Time"
+              type="datetime-local"
+              value={transDepTime}
+              onChange={(e) => setTransDepTime(e.target.value)}
+              required
+            />
+            <NeoInput
+              label="Arrival Time"
+              type="datetime-local"
+              value={transArrTime}
+              onChange={(e) => setTransArrTime(e.target.value)}
+              required
+            />
+          </div>
+
+          <NeoInput
+            label="Estimated Cost (₹)"
+            type="number"
+            value={transCost}
+            onChange={(e) => setTransCost(Number(e.target.value))}
+            required
+          />
+
+          <NeoInput
+            label="Notes / Provider / Ref (optional)"
+            placeholder="e.g. IndiGo 6E-204 / Tejas Express Coach B2"
+            value={transNotes}
+            onChange={(e) => setTransNotes(e.target.value)}
+          />
+
+          <div className="flex justify-end gap-3 pt-4">
+            <NeoButton
+              variant="white"
+              size="sm"
+              onClick={() => setIsAddTransportOpen(false)}
+            >
+              Cancel
+            </NeoButton>
+            <NeoButton variant="primary" size="sm" onClick={handleAddTransport}>
+              Add Transfer Leg
             </NeoButton>
           </div>
         </div>

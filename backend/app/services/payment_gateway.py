@@ -11,10 +11,16 @@ What it does *not* do is pretend to be a real processor: no card details are
 accepted, stored, or validated. Callers pass a method label and nothing else.
 """
 
+from abc import ABC, abstractmethod
+import logging
 import random
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Methods the demo offers. Purely labels -- no instrument data is handled.
 SUPPORTED_METHODS = ("card", "upi", "netbanking", "wallet")
@@ -27,7 +33,26 @@ class GatewayResult:
     failure_reason: str | None = None
 
 
-class SimulatedGateway:
+class BasePaymentGateway(ABC):
+    """Abstract payment gateway contract for processors."""
+
+    @abstractmethod
+    def authorize(self, amount: Decimal, method: str) -> GatewayResult:
+        """Reserve funds."""
+        pass
+
+    @abstractmethod
+    def capture(self, authorization_reference: str) -> GatewayResult:
+        """Settle previously authorized funds."""
+        pass
+
+    @abstractmethod
+    def refund(self, capture_reference: str, amount: Decimal) -> GatewayResult:
+        """Return captured funds."""
+        pass
+
+
+class SimulatedGateway(BasePaymentGateway):
     """Approves payments, unless asked to do otherwise.
 
     ``failure_rate`` exists so the unhappy path can be exercised on demand --
@@ -82,3 +107,19 @@ class SimulatedGateway:
                 failure_reason="Refund amount must be greater than zero",
             )
         return GatewayResult(approved=True, reference=self._reference("ref"))
+
+
+def get_payment_gateway(*, failure_rate: float | None = None) -> BasePaymentGateway:
+    """Factory returning the configured payment gateway provider."""
+    provider = (settings.PAYMENT_PROVIDER or "simulated").lower()
+    if provider == "stripe" and settings.STRIPE_SECRET_KEY:
+        logger.info("Using Stripe payment provider.")
+        # Future Stripe implementation hook:
+        # return StripeGateway(api_key=settings.STRIPE_SECRET_KEY)
+    elif provider == "razorpay" and settings.RAZORPAY_KEY_SECRET:
+        logger.info("Using Razorpay payment provider.")
+        # Future Razorpay implementation hook:
+        # return RazorpayGateway(api_secret=settings.RAZORPAY_KEY_SECRET)
+
+    rate = failure_rate if failure_rate is not None else settings.PAYMENT_SIMULATED_FAILURE_RATE
+    return SimulatedGateway(failure_rate=rate)

@@ -58,12 +58,17 @@ limiter = SlidingWindowLimiter()
 
 
 def _client_ip(request: Request) -> str:
-    # X-Forwarded-For is only meaningful behind a trusted proxy; falling back
-    # to the socket address keeps this correct when running directly.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    # Only trust X-Forwarded-For if explicitly configured to run behind a trusted reverse proxy
+    # AND the immediate socket connection is from an address in TRUSTED_PROXIES.
+    # Otherwise, fallback strictly to the socket connection address to prevent spoofing.
+    client_host = request.client.host if request.client else "unknown"
+    if settings.BEHIND_TRUSTED_PROXY:
+        trusted = settings.trusted_proxy_list
+        if not trusted or client_host in trusted:
+            forwarded = request.headers.get("x-forwarded-for")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+    return client_host
 
 
 def rate_limit_auth(request: Request) -> None:

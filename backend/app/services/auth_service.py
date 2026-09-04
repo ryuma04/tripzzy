@@ -22,8 +22,8 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.models import RevokedToken, User
-from app.models.enums import UserRole, UserStatus
+from app.models import Operator, OperatorMember, RevokedToken, User
+from app.models.enums import OperatorRole, UserRole, UserStatus
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import RegisterRequest
 from app.services.otp_service import OTPService
@@ -63,12 +63,45 @@ class AuthService:
                 country=payload.country,
                 additional_info=payload.additional_info,
                 hashed_password=hash_password(payload.password),
-                # Role is server-assigned. A client cannot register as admin.
-                role=UserRole.USER,
+                # Role is assigned. Direct admin registration is blocked by validator.
+                role=payload.role if payload.role != UserRole.ADMIN else UserRole.USER,
                 status=UserStatus.ACTIVE,
                 is_email_verified=not settings.REQUIRE_EMAIL_VERIFICATION,
             )
             await self.users.ensure_preferences(user)
+
+            if payload.role in (UserRole.COORDINATOR, UserRole.OPERATOR):
+                operator = await self.db.scalar(select(Operator).limit(1))
+                if operator is None:
+                    operator = Operator(
+                        name=payload.company_name or "Tripzyy Journeys",
+                        slug="tripzyy-journeys",
+                        email="ops@tripzyy.com",
+                        phone="+919876543210",
+                        country="India",
+                    )
+                    self.db.add(operator)
+                    await self.db.flush()
+
+                op_role = (
+                    OperatorRole.OWNER
+                    if payload.role == UserRole.OPERATOR
+                    else OperatorRole.COORDINATOR
+                )
+                job_title = (
+                    "Operations Lead"
+                    if payload.role == UserRole.OPERATOR
+                    else "Tour Coordinator"
+                )
+                membership = OperatorMember(
+                    operator_id=operator.id,
+                    user_id=user.id,
+                    role=op_role,
+                    job_title=job_title,
+                    is_active=True,
+                )
+                self.db.add(membership)
+                await self.db.flush()
         except IntegrityError as exc:
             await self.db.rollback()
             # Lost the race against a concurrent signup with the same email.

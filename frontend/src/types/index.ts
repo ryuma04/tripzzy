@@ -31,6 +31,8 @@ export interface Pagination {
 
 // ─── User ──────────────────────────────────
 
+export type UserRole = "user" | "coordinator" | "operator" | "admin";
+
 export interface User {
   id: string;
   first_name: string;
@@ -42,7 +44,10 @@ export interface User {
   bio?: string;
   additional_info?: string;
   avatar_url?: string;
-  role: "user" | "admin";
+  role: UserRole;
+  operator_role?: "owner" | "manager" | "coordinator";
+  operator_id?: string;
+  operator_name?: string;
   /** Mirrors the `user_status` enum; drives suspend/reactivate in the admin console. */
   status?: "active" | "suspended" | "deleted";
   is_email_verified?: boolean;
@@ -500,7 +505,8 @@ export interface RegisterPayload {
   last_name: string;
   email: string;
   password: string;
-  role?: "user" | "admin";
+  role?: UserRole;
+  company_name?: string;
   phone?: string;
   city?: string;
   country?: string;
@@ -514,7 +520,7 @@ export interface RegisterPayload {
 export interface LoginPayload {
   email: string;
   password?: string;
-  role?: "user" | "admin";
+  role?: UserRole;
 }
 
 export interface AuthResponse {
@@ -561,6 +567,7 @@ export interface Trip {
    * `trip.stops.length` on the profile page compiled and then crashed.
    */
   stops?: TripStop[];
+  transports?: Transport[];
   /** Counts the list endpoint sends in place of the full relations. */
   stop_count?: number;
   activity_count?: number;
@@ -712,7 +719,9 @@ export interface Accommodation {
   check_out: string;
   estimated_cost: number;
   booking_url?: string;
+  address?: string;
   notes?: string;
+  nights?: number;
 }
 
 export interface CreateAccommodationPayload {
@@ -721,6 +730,7 @@ export interface CreateAccommodationPayload {
   check_out: string;
   estimated_cost: number;
   booking_url?: string;
+  address?: string;
   notes?: string;
 }
 
@@ -769,15 +779,20 @@ export interface BudgetBreakdown {
 export interface CalendarEvent {
   id: string;
   tripId?: string;
+  trip_id?: string;
+  trip_title?: string;
   date: string;
-  start_time: string;
-  end_time: string;
+  start_time?: string | null;
+  end_time?: string | null;
   title: string;
   city: string;
-  type: "activity" | "transport" | "accommodation";
+  type: "activity" | "transport" | "accommodation" | "stop";
+  cost?: number | string;
 }
 
 export interface CalendarResponse {
+  start: string;
+  end: string;
   events: CalendarEvent[];
 }
 
@@ -1372,6 +1387,7 @@ export interface DestinationSearchParams {
   city?: string;
   country?: string;
   region?: string;
+  category?: string;
   page?: number;
   limit?: number;
 }

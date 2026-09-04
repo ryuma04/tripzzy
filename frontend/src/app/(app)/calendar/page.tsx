@@ -16,7 +16,7 @@ import { NeoCard } from "@/components/ui/neo-card";
 import { NeoButton } from "@/components/ui/neo-button";
 import { Modal } from "@/components/ui/modal";
 import { Dropdown } from "@/components/ui/dropdown";
-import { tripService } from "@/services/trips";
+import { calendarService } from "@/services/calendar";
 import type { CalendarEvent, Trip } from "@/types";
 
 export default function CalendarPage() {
@@ -26,55 +26,20 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [viewFilter, setViewFilter] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function loadCalendar() {
+      setIsLoading(true);
       try {
-        const res = await tripService.list({ limit: 50 });
+        const res = await calendarService.getCalendar();
         if (res.success && res.data) {
-          const trips: Trip[] = Array.isArray(res.data)
-            ? res.data
-            : (res.data as any).items || [];
-          
-          const extractedEvents: CalendarEvent[] = [];
-          for (const trip of trips) {
-            if (trip.stops) {
-              for (const stop of trip.stops) {
-                // Stop arrival
-                if (stop.arrival_date) {
-                  extractedEvents.push({
-                    id: `stop_${stop.id}`,
-                    tripId: trip.id,
-                    title: `Arrive in ${stop.destination?.city || stop.destination?.name || "City"}`,
-                    date: stop.arrival_date,
-                    start_time: "09:00",
-                    end_time: "10:00",
-                    type: "transport",
-                    city: stop.destination?.city || stop.destination?.name || "Stop",
-                  });
-                }
-                // Stop activities
-                if (stop.activities) {
-                  for (const act of stop.activities) {
-                    extractedEvents.push({
-                      id: `act_${act.id}`,
-                      tripId: trip.id,
-                      title: act.title,
-                      date: act.date,
-                      start_time: act.start_time || "10:00",
-                      end_time: act.end_time || "13:00",
-                      type: "activity",
-                      city: stop.destination?.city || stop.destination?.name || "Stop",
-                    });
-                  }
-                }
-              }
-            }
-          }
-          setEvents(extractedEvents);
+          setEvents(res.data.events || []);
         }
       } catch (err) {
         console.error("Failed to load calendar events:", err);
+      } finally {
+        setIsLoading(false);
       }
     }
 
@@ -166,9 +131,10 @@ export default function CalendarPage() {
             onChange={setViewFilter}
             options={[
               { value: "all", label: "All Scheduled Events" },
-              { value: "activity", label: "Activities & Treks" },
-              { value: "transport", label: "Transit & Trains" },
+              { value: "activity", label: "Activities & Sightseeing" },
+              { value: "transport", label: "Transfers & Transit" },
               { value: "accommodation", label: "Hotel Check-ins" },
+              { value: "stop", label: "City Arrivals" },
             ]}
           />
         </div>
@@ -223,25 +189,39 @@ export default function CalendarPage() {
                     {day}
                   </span>
                   {dayEvents.length > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-[#4F7DF9]" />
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-neutral-100 border border-neutral-300">
+                      {dayEvents.length}
+                    </span>
                   )}
                 </div>
 
-                {/* Event Tags inside Day Cell */}
-                <div className="flex flex-col gap-1 overflow-y-auto max-h-16 scrollbar-none">
-                  {dayEvents.map((ev) => (
+                {/* Event previews in cell */}
+                <div className="flex flex-col gap-1 overflow-y-auto max-h-16 pr-0.5">
+                  {dayEvents.slice(0, 2).map((ev) => (
                     <button
                       key={ev.id}
                       onClick={() => setSelectedEvent(ev)}
-                      className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-[#111111] truncate text-left cursor-pointer transition-transform hover:scale-102 ${
-                        ev.type === "transport"
-                          ? "bg-[#6EE7B7] text-[#111111]"
-                          : "bg-[#FFD54A] text-[#111111]"
-                      }`}
+                      className="text-left w-full truncate text-[10px] font-bold px-1.5 py-0.5 rounded border border-[#111111] shadow-[1px_1px_0px_#111111] transition-transform hover:-translate-y-0.5 cursor-pointer"
+                      style={{
+                        backgroundColor:
+                          ev.type === "transport"
+                            ? "#FFD54A"
+                            : ev.type === "accommodation"
+                            ? "#C3E88D"
+                            : ev.type === "stop"
+                            ? "#FFCB6B"
+                            : "#FF8E8E",
+                      }}
+                      title={`${ev.title} (${ev.city})`}
                     >
-                      {ev.start_time} {ev.title}
+                      {ev.title}
                     </button>
                   ))}
+                  {dayEvents.length > 2 && (
+                    <span className="text-[9px] font-bold text-neutral-500 pl-1">
+                      +{dayEvents.length - 2} more
+                    </span>
+                  )}
                 </div>
               </div>
             );
@@ -249,31 +229,43 @@ export default function CalendarPage() {
         </div>
       </NeoCard>
 
-      {/* ─── Event Details Modal ─── */}
+      {/* ─── Event Detail Modal ─── */}
       {selectedEvent && (
         <Modal
-          isOpen={!!selectedEvent}
+          isOpen={selectedEvent !== null}
           onClose={() => setSelectedEvent(null)}
           title={selectedEvent.title}
           subtitle={`Scheduled for ${selectedEvent.date}`}
-          maxWidth="sm"
         >
           <div className="flex flex-col gap-4">
-            <div className="p-3 bg-neutral-50 border-2 border-[#111111] rounded-xl flex flex-col gap-2 text-xs font-bold">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#4F7DF9]" />
-                <span>
-                  Timing: {selectedEvent.start_time} - {selectedEvent.end_time}
-                </span>
-              </div>
+            <div className="flex flex-col gap-2 text-xs font-bold text-neutral-700 bg-neutral-50 p-4 rounded-xl border-2 border-[#111111]">
+              {selectedEvent.trip_title && (
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-500 uppercase text-[10px]">Trip:</span>
+                  <span className="font-display font-extrabold text-sm text-[#171313]">{selectedEvent.trip_title}</span>
+                </div>
+              )}
+              {selectedEvent.start_time && (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-[#D94B3D]" />
+                  <span>
+                    Timing: {selectedEvent.start_time} {selectedEvent.end_time ? `- ${selectedEvent.end_time}` : ""}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-[#FFB347]" />
                 <span>Location: {selectedEvent.city}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="uppercase text-[10px] px-2 py-0.5 rounded bg-neutral-200 border border-[#111111]">
-                  Category: {selectedEvent.type}
+                  Type: {selectedEvent.type}
                 </span>
+                {selectedEvent.cost !== undefined && Number(selectedEvent.cost) > 0 && (
+                  <span className="text-[11px] font-display font-extrabold text-[#107038] ml-auto">
+                    Est: ₹{Number(selectedEvent.cost).toLocaleString("en-IN")}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -285,7 +277,7 @@ export default function CalendarPage() {
               >
                 Close
               </NeoButton>
-              <Link href={selectedEvent.tripId ? `/trips/${selectedEvent.tripId}` : "/trips"}>
+              <Link href={selectedEvent.trip_id || selectedEvent.tripId ? `/trips/${selectedEvent.trip_id || selectedEvent.tripId}` : "/trips"}>
                 <NeoButton
                   variant="yellow"
                   size="sm"

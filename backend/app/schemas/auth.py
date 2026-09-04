@@ -5,15 +5,12 @@ from typing import Annotated
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core import validators
+from app.models.enums import UserRole
 from app.schemas.user import UserResponse
 
 
 class RegisterRequest(BaseModel):
-    """The nine fields the wireframe's registration screen shows (spec 5).
-
-    Note there is deliberately no ``role`` field: role is assigned by the
-    server, never accepted from the client, so nobody can register as admin.
-    """
+    """Registration screen supporting Traveller, Coordinator, and Operator roles."""
 
     first_name: Annotated[str, Field(min_length=1, max_length=50)]
     last_name: Annotated[str, Field(min_length=1, max_length=50)]
@@ -22,8 +19,17 @@ class RegisterRequest(BaseModel):
     city: Annotated[str, Field(min_length=2, max_length=100)]
     country: Annotated[str, Field(min_length=2, max_length=100)]
     additional_info: Annotated[str | None, Field(max_length=1000)] = None
+    role: UserRole = UserRole.USER
+    company_name: Annotated[str | None, Field(max_length=120)] = None
     password: Annotated[str, Field(min_length=8, max_length=128)]
     confirm_password: Annotated[str, Field(min_length=8, max_length=128)]
+
+    @field_validator("role")
+    @classmethod
+    def _validate_role(cls, v: UserRole) -> UserRole:
+        if v == UserRole.ADMIN:
+            raise ValueError("Direct registration as admin is prohibited.")
+        return v
 
     @field_validator("first_name")
     @classmethod

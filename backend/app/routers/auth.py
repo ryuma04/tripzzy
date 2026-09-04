@@ -11,6 +11,8 @@ from app.core.deps import CurrentUser, DbSession, bearer_scheme
 from app.core.exceptions import UnauthorizedError
 from app.core.rate_limit import rate_limit_auth
 from app.repositories.user_repository import UserRepository
+from sqlalchemy import select
+from app.models import Operator, OperatorMember, User
 from app.schemas.auth import (
     LoginRequest,
     OTPRequest,
@@ -25,6 +27,27 @@ from app.services.otp_service import OTPService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+async def _serialize_user(user: User, db: DbSession) -> dict:
+    data = UserResponse.model_validate(user).model_dump()
+    membership = await db.scalar(
+        select(OperatorMember)
+        .where(OperatorMember.user_id == user.id, OperatorMember.is_active.is_(True))
+        .limit(1)
+    )
+    if membership:
+        data["operator_role"] = membership.role.value
+        data["operator_id"] = str(membership.operator_id)
+        op = await db.get(Operator, membership.operator_id)
+        if op:
+            data["operator_name"] = op.name
+        if data["role"] == "user":
+            if membership.role.value in ("owner", "manager"):
+                data["role"] = "operator"
+            elif membership.role.value == "coordinator":
+                data["role"] = "coordinator"
+    return data
+
+
 @router.post(
     "/register",
     summary="Create a new account",
@@ -34,8 +57,9 @@ async def register(payload: RegisterRequest, db: DbSession):
     service = AuthService(db)
     user, debug_code = await service.register(payload)
 
+    user_dict = await _serialize_user(user, db)
     data: dict = {
-        "user": UserResponse.model_validate(user).model_dump(),
+        "user": user_dict,
         "verification_required": settings.REQUIRE_EMAIL_VERIFICATION,
     }
 
@@ -67,8 +91,9 @@ async def login(payload: LoginRequest, db: DbSession):
     tokens = service.issue_tokens(user)
     tokens.pop("_expires_at", None)
 
+    user_dict = await _serialize_user(user, db)
     return responses.success(
-        {**tokens, "user": UserResponse.model_validate(user).model_dump()},
+        {**tokens, "user": user_dict},
         "Signed in successfully",
     )
 
@@ -91,17 +116,17 @@ async def logout(
 async def refresh(payload: RefreshRequest, db: DbSession):
     user, tokens = await AuthService(db).refresh(payload.refresh_token)
     tokens.pop("_expires_at", None)
+    user_dict = await _serialize_user(user, db)
     return responses.success(
-        {**tokens, "user": UserResponse.model_validate(user).model_dump()},
+        {**tokens, "user": user_dict},
         "Token refreshed",
     )
 
 
 @router.get("/me", summary="The currently authenticated user")
-async def me(current_user: CurrentUser):
-    return responses.success(
-        UserResponse.model_validate(current_user).model_dump(), "OK"
-    )
+async def me(current_user: CurrentUser, db: DbSession):
+    user_dict = await _serialize_user(current_user, db)
+    return responses.success(user_dict, "OK")
 
 
 @router.post("/verify-otp", summary="Confirm an email address with a code")

@@ -2,9 +2,21 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tripzyy — Smart Multi-City Trip Planner & Itinerary Builder",
+  title: {
+    default: "Tripzyy",
+    template: "%s | Tripzyy",
+  },
   description: "Plan multi-city journeys, organize activities, track real-time budgets, and discover public travel itineraries.",
   keywords: ["travel planner", "multi-city trips", "itinerary builder", "budget tracker", "travel community"],
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/tripzyy-icon.svg", type: "image/svg+xml" },
+      { url: "/tripzyy-icon.png", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png" }],
+    shortcut: ["/favicon.ico"],
+  },
 };
 
 export default function RootLayout({
@@ -15,6 +27,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/tripzyy-icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/apple-icon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

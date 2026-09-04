@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <filter id="neo-shadow" x="-5%" y="-5%" width="120%" height="120%">
+      <feDropShadow dx="14" dy="14" stdDeviation="0" flood-color="#171313" flood-opacity="1" />
+    </filter>
+    <linearGradient id="needle-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082" />
+      <stop offset="100%" stop-color="#FFB300" />
+    </linearGradient>
+    <linearGradient id="needle-white" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#FFF5E9" />
+    </linearGradient>
+  </defs>
+
+  <!-- Neo-Brutalist Shadow -->
+  <rect x="42" y="42" width="456" height="456" rx="90" fill="#171313" />
+
+  <!-- Main Badge Squircle -->
+  <rect x="28" y="28" width="456" height="456" rx="90" fill="#D94B3D" stroke="#171313" stroke-width="12" />
+
+  <!-- Navigational Compass Ring -->
+  <circle cx="256" cy="256" r="145" fill="none" stroke="#FFF5E9" stroke-width="4" stroke-opacity="0.5" stroke-dasharray="10 8" />
+
+  <!-- Compass Secondary Diagonal Points -->
+  <g fill="#FFF5E9" fill-opacity="0.85">
+    <!-- NE -->
+    <polygon points="256,256 243,269 314,198" fill="#FFF5E9" />
+    <polygon points="256,256 269,243 314,198" fill="#E8D7C8" />
+    <!-- SE -->
+    <polygon points="256,256 243,243 314,314" fill="#FFF5E9" />
+    <polygon points="256,256 269,269 314,314" fill="#E8D7C8" />
+    <!-- SW -->
+    <polygon points="256,256 269,243 198,314" fill="#FFF5E9" />
+    <polygon points="256,256 243,269 198,314" fill="#E8D7C8" />
+    <!-- NW -->
+    <polygon points="256,256 269,269 198,198" fill="#FFF5E9" />
+    <polygon points="256,256 243,243 198,198" fill="#E8D7C8" />
+  </g>
+
+  <!-- Primary Faceted Compass Rose -->
+  <!-- NORTH Pointer -->
+  <polygon points="256,256 222,256 256,120" fill="url(#needle-white)" />
+  <polygon points="256,256 290,256 256,120" fill="url(#needle-gold)" />
+
+  <!-- SOUTH Pointer -->
+  <polygon points="256,256 222,256 256,392" fill="#FFF5E9" />
+  <polygon points="256,256 290,256 256,392" fill="#D6C0B2" />
+
+  <!-- EAST Pointer -->
+  <polygon points="256,256 256,222 392,256" fill="#FFF5E9" />
+  <polygon points="256,256 256,290 392,256" fill="#D6C0B2" />
+
+  <!-- WEST Pointer -->
+  <polygon points="256,256 256,222 120,256" fill="url(#needle-white)" />
+  <polygon points="256,256 256,290 120,256" fill="#E8D7C8" />
+
+  <!-- Compass Star Needle Division Lines -->
+  <line x1="256" y1="120" x2="256" y2="392" stroke="#171313" stroke-width="3" />
+  <line x1="120" y1="256" x2="392" y2="256" stroke="#171313" stroke-width="3" />
+
+  <!-- Central Compass Core Pivot -->
+  <circle cx="256" cy="256" r="24" fill="#171313" />
+  <circle cx="256" cy="256" r="12" fill="#FFD166" />
+  <circle cx="256" cy="256" r="4" fill="#171313" />
+</svg>

@@ -434,3 +434,75 @@ async def test_clerk_sync_rejects_traveller_accessing_operator(
     assert body["error"]["code"] == "FORBIDDEN"
     assert "registered as a Traveller" in body["message"]
 
+
+async def test_clerk_sync_rejects_operator_accessing_traveller(
+    client: AsyncClient, registration, monkeypatch
+):
+    # 1. Register as a user and elevate to operator role
+    reg = await client.post("/auth/register", json={**registration, "role": "operator"})
+    assert reg.status_code == 201
+
+    clerk_id = "user_clerk_operator_block_101"
+    monkeypatch.setattr(
+        "app.core.clerk.verify_clerk_token",
+        lambda token: {"sub": clerk_id},
+    )
+
+    async def mock_get_info(token: str):
+        return {
+            "clerk_id": clerk_id,
+            "email": registration["email"],
+            "first_name": registration["first_name"],
+            "last_name": registration["last_name"],
+            "role": "user",
+        }
+
+    monkeypatch.setattr("app.core.clerk.get_clerk_user_info", mock_get_info)
+
+    # 2. Try to sync with role="user" on an existing operator account
+    resp = await client.post(
+        "/auth/clerk-sync",
+        headers={"Authorization": "Bearer valid_clerk_session"},
+        json={"email": registration["email"], "role": "user"},
+    )
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["error"]["code"] == "FORBIDDEN"
+    assert "Tour & Travel Operator" in body["message"]
+
+
+async def test_clerk_sync_rejects_non_admin_accessing_admin(
+    client: AsyncClient, registration, monkeypatch
+):
+    # 1. Register as a normal traveller
+    reg = await client.post("/auth/register", json=registration)
+    assert reg.status_code == 201
+
+    clerk_id = "user_clerk_admin_block_202"
+    monkeypatch.setattr(
+        "app.core.clerk.verify_clerk_token",
+        lambda token: {"sub": clerk_id},
+    )
+
+    async def mock_get_info(token: str):
+        return {
+            "clerk_id": clerk_id,
+            "email": registration["email"],
+            "first_name": registration["first_name"],
+            "last_name": registration["last_name"],
+            "role": "admin",
+        }
+
+    monkeypatch.setattr("app.core.clerk.get_clerk_user_info", mock_get_info)
+
+    # 2. Try to sync with role="admin" on an ordinary traveller account
+    resp = await client.post(
+        "/auth/clerk-sync",
+        headers={"Authorization": "Bearer valid_clerk_session"},
+        json={"email": registration["email"], "role": "admin"},
+    )
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["error"]["code"] == "FORBIDDEN"
+    assert "Station Administration" in body["message"]
+

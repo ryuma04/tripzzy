@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useUser, useAuth } from "@clerk/nextjs";
+import { useUser, useAuth, useClerk } from "@clerk/nextjs";
 import type { AuthResponse, User } from "@/types";
 
 const API_BASE_URL =
@@ -10,6 +10,7 @@ const API_BASE_URL =
 export function ClerkSync() {
   const { isSignedIn, user, isLoaded } = useUser();
   const { getToken } = useAuth();
+  const { signOut } = useClerk();
   const syncingRef = useRef(false);
 
   useEffect(() => {
@@ -106,12 +107,20 @@ export function ClerkSync() {
 
         if (response.status === 403 || res.error?.code === "FORBIDDEN") {
           console.warn("Role mismatch / Forbidden:", res.message);
+          try {
+            await signOut();
+          } catch {
+            // ignore
+          }
           if (typeof window !== "undefined") {
             sessionStorage.setItem("tripzyy_auth_error", res.message || "Forbidden");
+            localStorage.removeItem("tripzyy_token");
+            localStorage.removeItem("tripzyy_user");
             localStorage.removeItem("tripzyy_pending_role");
+            localStorage.removeItem("tripzyy_active_role_view");
             window.location.href = `/login?error=role_forbidden&msg=${encodeURIComponent(
               res.message ||
-                "This account is registered as a Traveller and cannot access Tour & Travel."
+                "Access restricted. This account is not authorized for this workspace."
             )}`;
           }
           return;

@@ -227,75 +227,83 @@ function DashboardContent() {
         updateUser(userRes.data);
       }
 
-      const [tripsRes, destsRes] = await Promise.all([
-        tripService.list({ limit: 10 }),
-        destinationService.search({ limit: 6 }),
-      ]);
-
-      if (tripsRes.success) {
-        const items = unwrapItems<Trip>(tripsRes.data);
-        setTrips(items.length === 0 && DEMO_MODE ? DEMO_TRIPS : items);
-      } else if (DEMO_MODE) {
-        setTrips(DEMO_TRIPS);
-      }
-
-      if (destsRes.success) {
-        const items = unwrapItems<Destination>(destsRes.data);
-        setDestinations(
-          items.length === 0 && DEMO_MODE ? DEMO_DESTINATIONS : items
-        );
-      } else if (DEMO_MODE) {
-        setDestinations(DEMO_DESTINATIONS);
-      }
-
-      const [groupsRes, opStatsRes, threadsRes, changesRes, disruptionsRes] =
-        await Promise.allSettled([
-          operatorService.tourGroups({ limit: 8 }),
-          operatorService.dashboard(),
-          operatorAssistService.threads({ limit: 5 }),
-          operatorAdaptationService.changeRequests({ limit: 5 }),
-          operatorAdaptationService.disruptions({ limit: 5 }),
+      if (activeRoleView === "user") {
+        const [tripsRes, destsRes] = await Promise.allSettled([
+          tripService.list({ limit: 10 }),
+          destinationService.search({ limit: 6 }),
         ]);
 
-      if (groupsRes.status === "fulfilled" && groupsRes.value.success) {
-        setTourGroups(unwrapItems<TourGroup>(groupsRes.value.data));
-      }
-      if (opStatsRes.status === "fulfilled" && opStatsRes.value.success) {
-        setOperatorStats(opStatsRes.value.data);
-      }
-      if (threadsRes.status === "fulfilled" && threadsRes.value.success) {
-        setAssistThreads(unwrapItems<AssistThread>(threadsRes.value.data));
-      }
-      if (changesRes.status === "fulfilled" && changesRes.value.success) {
-        setChangeRequests(unwrapItems<ChangeRequest>(changesRes.value.data));
-      }
-      if (
-        disruptionsRes.status === "fulfilled" &&
-        disruptionsRes.value.success
-      ) {
-        setDisruptions(unwrapItems<Disruption>(disruptionsRes.value.data));
-      }
+        if (tripsRes.status === "fulfilled" && tripsRes.value.success) {
+          const items = unwrapItems<Trip>(tripsRes.value.data);
+          setTrips(items.length === 0 && DEMO_MODE ? DEMO_TRIPS : items);
+        } else if (DEMO_MODE) {
+          setTrips(DEMO_TRIPS);
+        }
 
-      const [adminDashRes, adminUsersRes] = await Promise.allSettled([
-        adminService.getDashboard(),
-        adminService.getUsers({ limit: 6 }),
-      ]);
+        if (destsRes.status === "fulfilled" && destsRes.value.success) {
+          const items = unwrapItems<Destination>(destsRes.value.data);
+          setDestinations(
+            items.length === 0 && DEMO_MODE ? DEMO_DESTINATIONS : items
+          );
+        } else if (DEMO_MODE) {
+          setDestinations(DEMO_DESTINATIONS);
+        }
+      } else if (activeRoleView === "operator") {
+        const [tripsRes, groupsRes, opStatsRes, threadsRes, changesRes, disruptionsRes] =
+          await Promise.allSettled([
+            tripService.list({ limit: 10 }),
+            operatorService.tourGroups({ limit: 8 }),
+            operatorService.dashboard(),
+            operatorAssistService.threads({ limit: 5 }),
+            operatorAdaptationService.changeRequests({ limit: 5 }),
+            operatorAdaptationService.disruptions({ limit: 5 }),
+          ]);
 
-      if (adminDashRes.status === "fulfilled" && adminDashRes.value.success) {
-        setAdminStats(adminDashRes.value.data);
-      }
-      if (
-        adminUsersRes.status === "fulfilled" &&
-        adminUsersRes.value.success
-      ) {
-        setAdminUsers(unwrapItems<User>(adminUsersRes.value.data));
+        if (tripsRes.status === "fulfilled" && tripsRes.value.success) {
+          const items = unwrapItems<Trip>(tripsRes.value.data);
+          setTrips(items.length === 0 && DEMO_MODE ? DEMO_TRIPS : items);
+        }
+
+        if (groupsRes.status === "fulfilled" && groupsRes.value.success) {
+          setTourGroups(unwrapItems<TourGroup>(groupsRes.value.data));
+        }
+        if (opStatsRes.status === "fulfilled" && opStatsRes.value.success) {
+          setOperatorStats(opStatsRes.value.data);
+        }
+        if (threadsRes.status === "fulfilled" && threadsRes.value.success) {
+          setAssistThreads(unwrapItems<AssistThread>(threadsRes.value.data));
+        }
+        if (changesRes.status === "fulfilled" && changesRes.value.success) {
+          setChangeRequests(unwrapItems<ChangeRequest>(changesRes.value.data));
+        }
+        if (
+          disruptionsRes.status === "fulfilled" &&
+          disruptionsRes.value.success
+        ) {
+          setDisruptions(unwrapItems<Disruption>(disruptionsRes.value.data));
+        }
+      } else if (activeRoleView === "admin") {
+        const [adminDashRes, adminUsersRes] = await Promise.allSettled([
+          adminService.getDashboard(),
+          adminService.getUsers({ limit: 6 }),
+        ]);
+
+        if (adminDashRes.status === "fulfilled" && adminDashRes.value.success) {
+          setAdminStats(adminDashRes.value.data);
+        }
+        if (
+          adminUsersRes.status === "fulfilled" &&
+          adminUsersRes.value.success
+        ) {
+          setAdminUsers(unwrapItems<User>(adminUsersRes.value.data));
+        }
       }
     } catch (err) {
       console.error("Dashboard data load error:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [updateUser]);
+  }, [updateUser, activeRoleView]);
 
   useEffect(() => {
     loadDashboardData();

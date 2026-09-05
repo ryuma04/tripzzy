@@ -76,8 +76,8 @@ class AuthService:
                     operator = Operator(
                         name=payload.company_name or "Tripzyy Journeys",
                         slug="tripzyy-journeys",
-                        email="ops@tripzyy.com",
-                        phone="+919876543210",
+                        contact_email="ops@tripzyy.com",
+                        contact_phone="+919876543210",
                         country="India",
                     )
                     self.db.add(operator)

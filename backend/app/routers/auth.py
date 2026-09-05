@@ -316,7 +316,7 @@ async def clerk_sync(
         if user is None and email:
             user = await UserRepository(db).get_by_email(email)
 
-        # ── Role boundary verification: Traveller cannot log in to Tour & Travel ──
+        # ── Role boundary verification: Strict workspace isolation ──
         if user is not None:
             existing_user_role = getattr(user.role, "value", str(user.role)).lower()
             existing_mem = await db.scalar(
@@ -330,7 +330,7 @@ async def clerk_sync(
                 or existing_mem is not None
             )
 
-            # Block ordinary travellers from accessing Tour & Travel workspace
+            # 1. Block ordinary travellers from accessing Tour & Travel workspace
             if payload_role_val in ("operator", "coordinator"):
                 if not is_staff_user:
                     raise ForbiddenError(
@@ -339,7 +339,20 @@ async def clerk_sync(
                         "or use an authorized Tour Operator account."
                     )
 
-            # Block non-admins from accessing Station Administrator workspace
+            # 2. Block Tour Operators and Admins from accessing the Traveller workspace
+            if payload_role_val == "user":
+                if existing_user_role in ("operator", "coordinator", "userrole.operator", "userrole.coordinator") or existing_mem is not None:
+                    raise ForbiddenError(
+                        "This account is registered as a Tour & Travel Operator and cannot access "
+                        "the Explorer workspace. Please select the Tour & Travel workspace to sign in."
+                    )
+                elif existing_user_role in ("admin", "userrole.admin"):
+                    raise ForbiddenError(
+                        "This account is registered as a Station Administrator and cannot access "
+                        "the Explorer workspace. Please select the Station Admin workspace to sign in."
+                    )
+
+            # 3. Block non-admins from accessing Station Administrator workspace
             if payload_role_val == "admin":
                 if existing_user_role not in ("admin", "userrole.admin"):
                     raise ForbiddenError(
@@ -347,6 +360,10 @@ async def clerk_sync(
                     )
 
         if user is None:
+            if payload_role_val == "admin":
+                raise ForbiddenError(
+                    "This account is not authorized to access Station Administration."
+                )
             # Create new user
             user = User(
                 email=email,

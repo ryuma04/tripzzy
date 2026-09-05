@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Compass,
   Building2,
@@ -10,9 +10,11 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
-import { SignIn } from "@clerk/nextjs";
+import { SignIn, useUser, useAuth, useClerk } from "@clerk/nextjs";
+import { API_BASE_URL } from "@/lib/api";
 
 type OnboardingRole = "user" | "operator" | "admin";
 
@@ -57,29 +59,157 @@ const ROLE_CONFIGS: Record<
 };
 
 function LoginContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const { isLoaded, isSignedIn, user } = useUser();
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
+
   const sessionExpired = searchParams?.get("expired") === "1";
   const isRoleForbidden = searchParams?.get("error") === "role_forbidden";
-  const forbiddenMessage = searchParams?.get("msg");
+  const forbiddenParamMessage = searchParams?.get("msg");
+  const isSyncMode = searchParams?.get("sync") === "1";
+  const targetRoleParam = searchParams?.get("role") as OnboardingRole | null;
 
-  const [role, setRole] = useState<OnboardingRole>("user");
+  const [role, setRole] = useState<OnboardingRole>(() => {
+    if (targetRoleParam && ROLE_CONFIGS[targetRoleParam]) return targetRoleParam;
+    return "user";
+  });
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    () => forbiddenParamMessage || null
+  );
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  // If redirected with forbidden error while Clerk session was open, terminate Clerk session immediately
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (isRoleForbidden && isSignedIn) {
+      signOut();
+    }
+  }, [isRoleForbidden, isSignedIn, signOut]);
+
+  // Read saved role from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && !targetRoleParam) {
       const saved = localStorage.getItem("tripzyy_pending_role") as OnboardingRole | null;
       if (saved && ROLE_CONFIGS[saved]) {
         setRole(saved);
       }
     }
-  }, []);
+  }, [targetRoleParam]);
 
+  // Tab selection handler
   const handleRoleSelect = (selected: OnboardingRole) => {
     setRole(selected);
+    setErrorMessage(null);
     if (typeof window !== "undefined") {
       localStorage.setItem("tripzyy_pending_role", selected);
       localStorage.setItem("tripzyy_active_role_view", selected);
     }
   };
+
+  // Verify role with Tripzyy backend before letting user inside the app
+  useEffect(() => {
+    if (!isSyncMode || !isLoaded || !isSignedIn || !user || isVerifying) return;
+
+    let isCancelled = false;
+
+    const verifyAndSync = async () => {
+      setIsVerifying(true);
+      setErrorMessage(null);
+      const chosenRole = targetRoleParam || role || "user";
+
+      try {
+        const token = await getToken();
+        if (!token) {
+          throw new Error("Unable to obtain authentication session token from Clerk.");
+        }
+
+        const email = user.primaryEmailAddress?.emailAddress;
+        const response = await fetch(`${API_BASE_URL}/auth/clerk-sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            email,
+            first_name: user.firstName || "Traveler",
+            last_name: user.lastName || "",
+            clerk_id: user.id,
+            role: chosenRole,
+          }),
+        });
+
+        const res = (await response.json()) as {
+          success: boolean;
+          message?: string;
+          data?: { access_token: string; refresh_token: string; user: any };
+          error?: { code: string; details?: any };
+        };
+
+        if (response.status === 403 || res.error?.code === "FORBIDDEN") {
+          // Access restricted: terminate Clerk session and show error directly on login page
+          await signOut();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("tripzyy_token");
+            localStorage.removeItem("tripzyy_user");
+            localStorage.removeItem("tripzyy_pending_role");
+            localStorage.removeItem("tripzyy_active_role_view");
+          }
+          setErrorMessage(
+            res.message ||
+              "Access restricted for this workspace. Please select the correct workspace role."
+          );
+          setIsVerifying(false);
+          router.replace("/login");
+          return;
+        }
+
+        if (response.ok && res.success && res.data?.access_token) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("tripzyy_token", res.data.access_token);
+            if (res.data.user) {
+              localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
+              if (
+                res.data.user.role === "operator" ||
+                res.data.user.role === "coordinator" ||
+                res.data.user.operator_role
+              ) {
+                localStorage.setItem("tripzyy_active_role_view", "operator");
+              } else if (res.data.user.role === "admin") {
+                localStorage.setItem("tripzyy_active_role_view", "admin");
+              } else {
+                localStorage.setItem("tripzyy_active_role_view", "user");
+              }
+            }
+            localStorage.removeItem("tripzyy_pending_role");
+          }
+          window.dispatchEvent(new Event("tripzyy_auth_changed"));
+          window.location.href = `/dashboard?view=${chosenRole}`;
+          return;
+        }
+
+        // Other non-OK response
+        await signOut();
+        setErrorMessage(res.message || "Failed to authenticate with workspace.");
+        setIsVerifying(false);
+        router.replace("/login");
+      } catch (err: any) {
+        if (!isCancelled) {
+          await signOut();
+          setErrorMessage(err.message || "Authentication verification failed.");
+          setIsVerifying(false);
+          router.replace("/login");
+        }
+      }
+    };
+
+    verifyAndSync();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isSyncMode, isLoaded, isSignedIn, user, targetRoleParam, role, getToken, signOut, router]);
 
   const currentConfig = ROLE_CONFIGS[role];
   const IconComponent = currentConfig.icon;
@@ -106,14 +236,14 @@ function LoginContent() {
         </p>
       </div>
 
-      {isRoleForbidden && (
-        <div className="mb-4 p-3.5 bg-[#FEF2F2] border-2 border-[#DC2626] rounded-xl shadow-[3px_3px_0px_#DC2626]">
-          <p className="font-display font-extrabold text-xs text-[#DC2626] flex items-center gap-1.5">
-            <AlertTriangle className="w-4 h-4" /> Role Access Restricted
+      {/* Role Access Restricted Alert Banner */}
+      {errorMessage && (
+        <div className="mb-4 p-4 bg-[#FEF2F2] border-[3px] border-[#DC2626] rounded-xl shadow-[4px_4px_0px_#DC2626] animate-in fade-in slide-in-from-top-2 duration-200">
+          <p className="font-display font-extrabold text-xs text-[#DC2626] flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" /> Role Access Restricted
           </p>
-          <p className="text-[11px] font-medium text-neutral-800 mt-1">
-            {forbiddenMessage ||
-              "This account is registered as a Traveller and cannot access Tour & Travel operations. Please select the Explorer workspace or use an authorized Tour Operator account."}
+          <p className="text-xs font-semibold text-neutral-800 mt-1.5 leading-relaxed">
+            {errorMessage}
           </p>
         </div>
       )}
@@ -180,28 +310,44 @@ function LoginContent() {
         <span>{currentConfig.bannerNote}</span>
       </div>
 
-      {/* Clerk Sign In Component */}
-      <div className="flex justify-center my-2">
-        <SignIn
-          key={role}
-          routing="hash"
-          signUpUrl="/register"
-          fallbackRedirectUrl={`/dashboard?view=${role}`}
-          appearance={{
-            elements: {
-              rootBox: "w-full",
-              card: "w-full shadow-none border-2 border-[#171313] rounded-2xl bg-white",
-              headerTitle: "font-display font-extrabold text-[#171313]",
-              headerSubtitle: "text-neutral-600 font-medium text-xs",
-              formButtonPrimary:
-                "bg-[#E51919] hover:bg-[#c41515] text-white font-bold border-2 border-[#171313] shadow-[2px_2px_0px_#171313] transition-all",
-              formFieldInput:
-                "border-2 border-[#171313] rounded-xl font-medium focus:shadow-[2px_2px_0px_#E51919] focus:border-[#E51919]",
-              footerActionLink: "text-[#E51919] font-bold hover:underline",
-            },
-          }}
-        />
-      </div>
+      {/* Clerk Sign In Component OR Verifying Spinner */}
+      {isVerifying ? (
+        <div className="py-12 px-4 flex flex-col items-center justify-center text-center bg-[#FAF7F2] border-[3px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313]">
+          <div
+            className="w-12 h-12 border-4 border-[#171313] border-t-transparent rounded-full animate-spin mb-4"
+            style={{ borderTopColor: currentConfig.color }}
+          />
+          <h3 className="font-display font-extrabold text-base text-[#171313]">
+            Verifying Workspace Clearance...
+          </h3>
+          <p className="text-xs text-neutral-600 mt-1 font-medium max-w-xs">
+            Confirming authorization for <strong>{currentConfig.title}</strong>
+          </p>
+        </div>
+      ) : (
+        <div className="flex justify-center my-2">
+          <SignIn
+            key={`${role}-${errorMessage || "normal"}`}
+            routing="hash"
+            signUpUrl="/register"
+            fallbackRedirectUrl={`/login?sync=1&role=${role}`}
+            forceRedirectUrl={`/login?sync=1&role=${role}`}
+            appearance={{
+              elements: {
+                rootBox: "w-full",
+                card: "w-full shadow-none border-2 border-[#171313] rounded-2xl bg-white",
+                headerTitle: "font-display font-extrabold text-[#171313]",
+                headerSubtitle: "text-neutral-600 font-medium text-xs",
+                formButtonPrimary:
+                  "bg-[#E51919] hover:bg-[#c41515] text-white font-bold border-2 border-[#171313] shadow-[2px_2px_0px_#171313] transition-all",
+                formFieldInput:
+                  "border-2 border-[#171313] rounded-xl font-medium focus:shadow-[2px_2px_0px_#E51919] focus:border-[#E51919]",
+                footerActionLink: "text-[#E51919] font-bold hover:underline",
+              },
+            }}
+          />
+        </div>
+      )}
 
       {/* Register Link */}
       <div className="text-center text-xs sm:text-sm font-bold text-neutral-700 pt-5 mt-5 border-t-2 border-[#171313]">

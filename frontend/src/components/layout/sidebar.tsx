@@ -70,13 +70,6 @@ const explorerNavItems: NavItem[] = [
     href: "/calendar",
     icon: <CalendarIcon className="w-5 h-5" />,
   },
-  {
-    label: "Tour & Travel",
-    href: "/dashboard?view=operator",
-    icon: <Building2 className="w-5 h-5" />,
-    badge: "OPS",
-    badgeColor: "bg-[#D97706] text-white",
-  },
 ];
 
 // 2. Tour & Travel (Operator & Coordinator Unified) Navigation
@@ -200,24 +193,48 @@ export const Sidebar: React.FC = () => {
     }
   }, [pathname, user?.role]);
 
-  // Determine current active role navigation (3 User Types: Explorer, Tour & Travel, Station Admin)
-  const isTourAndTravel =
-    activeRoleView === "operator" ||
-    activeRoleView === "coordinator" ||
-    pathname.startsWith("/operator") ||
-    ((isOperator || isCoordinator || isOperatorStaff || user?.role === "operator" || user?.role === "coordinator") &&
-      activeRoleView !== "user" &&
-      activeRoleView !== "admin");
+  const isOperatorStaffMember = Boolean(
+    isAdmin ||
+    isOperator ||
+    isCoordinator ||
+    isOperatorStaff ||
+    user?.role === "operator" ||
+    user?.role === "coordinator" ||
+    user?.role === "admin"
+  );
 
-  const isStationAdmin =
-    (isAdmin || pathname.startsWith("/admin") || activeRoleView === "admin") &&
+  const isStationAdmin = Boolean(
+    (isAdmin || user?.role === "admin") &&
+    (pathname.startsWith("/admin") || activeRoleView === "admin") &&
     activeRoleView !== "operator" &&
-    activeRoleView !== "user";
+    activeRoleView !== "user"
+  );
+
+  const isTourAndTravel = Boolean(
+    !isStationAdmin &&
+    isOperatorStaffMember &&
+    (activeRoleView === "operator" ||
+      activeRoleView === "coordinator" ||
+      pathname.startsWith("/operator")) &&
+    activeRoleView !== "user" &&
+    activeRoleView !== "admin"
+  );
 
   const currentNavItems = isStationAdmin
     ? adminNavItems
     : isTourAndTravel
     ? tourAndTravelNavItems
+    : isOperatorStaffMember
+    ? [
+        ...explorerNavItems,
+        {
+          label: "Tour & Travel",
+          href: "/dashboard?view=operator",
+          icon: <Building2 className="w-5 h-5" />,
+          badge: "OPS",
+          badgeColor: "bg-[#D97706] text-white",
+        },
+      ]
     : explorerNavItems;
 
   const roleLabel = isStationAdmin
@@ -242,7 +259,7 @@ export const Sidebar: React.FC = () => {
     ? "/admin"
     : isTourAndTravel
     ? "/dashboard?view=operator"
-    : "/dashboard?view=user";
+    : "/dashboard";
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full justify-between p-4 bg-[#EAD7C0] text-[#171313] border-r-[4px] border-[#171313] select-none shadow-[2px_0px_10px_rgba(23,19,19,0.06)]">

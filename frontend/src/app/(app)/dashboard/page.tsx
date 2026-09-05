@@ -72,11 +72,30 @@ function DashboardContent() {
   >("all");
 
   useEffect(() => {
-    // 1. URL search param takes highest precedence
+    const isStaff = Boolean(
+      isAdmin ||
+      isOperator ||
+      isCoordinator ||
+      user?.role === "operator" ||
+      user?.role === "coordinator" ||
+      user?.role === "admin"
+    );
+
+    // 1. URL search param takes highest precedence (with permission check)
     if (
       viewParam &&
       (viewParam === "user" || viewParam === "operator" || viewParam === "admin")
     ) {
+      if (viewParam === "operator" && !isStaff) {
+        setActiveRoleView("user");
+        router.replace("/dashboard");
+        return;
+      }
+      if (viewParam === "admin" && !isAdmin && user?.role !== "admin") {
+        setActiveRoleView("user");
+        router.replace("/dashboard");
+        return;
+      }
       setActiveRoleView(viewParam);
       if (typeof window !== "undefined") {
         localStorage.setItem("tripzyy_active_role_view", viewParam);
@@ -87,13 +106,13 @@ function DashboardContent() {
     // 2. Pending role from login/register or saved active view
     if (typeof window !== "undefined") {
       const pendingRole = localStorage.getItem("tripzyy_pending_role");
-      if (pendingRole === "operator" || pendingRole === "coordinator") {
+      if ((pendingRole === "operator" || pendingRole === "coordinator") && isStaff) {
         setActiveRoleView("operator");
         localStorage.setItem("tripzyy_active_role_view", "operator");
         localStorage.removeItem("tripzyy_pending_role");
         return;
       }
-      if (pendingRole === "admin") {
+      if (pendingRole === "admin" && (isAdmin || user?.role === "admin")) {
         setActiveRoleView("admin");
         localStorage.setItem("tripzyy_active_role_view", "admin");
         localStorage.removeItem("tripzyy_pending_role");
@@ -103,7 +122,11 @@ function DashboardContent() {
       const savedView = localStorage.getItem(
         "tripzyy_active_role_view"
       ) as DashboardRoleView | null;
-      if (
+      if (savedView === "operator" && !isStaff) {
+        localStorage.removeItem("tripzyy_active_role_view");
+      } else if (savedView === "admin" && !isAdmin && user?.role !== "admin") {
+        localStorage.removeItem("tripzyy_active_role_view");
+      } else if (
         savedView &&
         (savedView === "user" || savedView === "operator" || savedView === "admin")
       ) {
@@ -113,7 +136,7 @@ function DashboardContent() {
     }
 
     // 3. Fallback to user role
-    if (isAdmin) {
+    if (isAdmin || user?.role === "admin") {
       setActiveRoleView("admin");
     } else if (
       isOperator ||
@@ -125,7 +148,7 @@ function DashboardContent() {
     } else {
       setActiveRoleView("user");
     }
-  }, [viewParam, isAdmin, isOperator, isCoordinator, user?.role]);
+  }, [viewParam, isAdmin, isOperator, isCoordinator, user?.role, router]);
 
   const handleSwitchRoleView = (view: DashboardRoleView) => {
     setActiveRoleView(view);

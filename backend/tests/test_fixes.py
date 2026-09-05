@@ -42,6 +42,40 @@ def test_rate_limit_client_ip_spoofing_defense():
             assert ip == "10.0.0.1"
 
 
+def test_cors_vercel_origins_and_preflight():
+    """Verify that Vercel preview/production origins pass CORS preflight checks."""
+    from app.main import create_app
+    from starlette.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app)
+
+    # 1. Test Vercel preview deployment URL preflight
+    res = client.options(
+        "/api/v1/operator/me",
+        headers={
+            "Origin": "https://tripzzy-bynqv57y3-ryuma04s-projects.vercel.app",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-origin") == "https://tripzzy-bynqv57y3-ryuma04s-projects.vercel.app"
+    assert res.headers.get("access-control-allow-credentials") == "true"
+
+    # 2. Test disallowed malicious origin
+    res_bad = client.options(
+        "/api/v1/operator/me",
+        headers={
+            "Origin": "https://malicious-site.com",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert res_bad.status_code == 400
+    assert "access-control-allow-origin" not in res_bad.headers
+
+
 @pytest.mark.asyncio
 async def test_saved_destinations_lifecycle(
     auth_client: AsyncClient,

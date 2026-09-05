@@ -39,7 +39,12 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     # Comma-separated in .env, e.g. "http://localhost:3000,http://127.0.0.1:3000"
-    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,https://tripzzy-one.vercel.app"
+    )
+    CORS_ORIGIN_REGEX: str | None = (
+        r"^https:\/\/(.*\.)?vercel\.app$|^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$|^https:\/\/(.*\.)?onrender\.com$"
+    )
 
     # --- Email / OTP (R1) ---
     REQUIRE_EMAIL_VERIFICATION: bool = True

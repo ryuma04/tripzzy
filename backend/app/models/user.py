@@ -43,6 +43,12 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    # Clerk external authentication provider ID.
+    # Nullable because users created via email/password registration won't have one.
+    clerk_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+
     role: Mapped[UserRole] = mapped_column(
         SAEnum(UserRole, name="user_role", values_callable=lambda e: [m.value for m in e]),
         nullable=False,
@@ -76,6 +82,7 @@ class User(UUIDMixin, TimestampMixin, Base):
         CheckConstraint("email = lower(email)", name="email_lowercase"),
         CheckConstraint("position('@' in email) > 1", name="email_has_at"),
         Index("ix_users_email_lower", text("lower(email)"), unique=True),
+        Index("ix_users_clerk_id", "clerk_id", unique=True),
         Index("ix_users_role", "role"),
         Index("ix_users_status", "status"),
     )

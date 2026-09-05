@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useUser } from "@clerk/nextjs";
-import { apiClient } from "@/lib/api";
+import { useUser, useAuth } from "@clerk/nextjs";
 import type { AuthResponse, User } from "@/types";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 export function ClerkSync() {
   const { isSignedIn, user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const syncingRef = useRef(false);
 
   useEffect(() => {
@@ -66,17 +69,31 @@ export function ClerkSync() {
           (user.unsafeMetadata?.role as string) ||
           "user";
 
-        const res = await apiClient.post<AuthResponse>(
-          "/auth/clerk-sync",
-          {
+        // Get the Clerk session token for secure backend verification
+        const clerkSessionToken = await getToken();
+        if (!clerkSessionToken) {
+          console.error("Clerk sync: unable to get session token");
+          return;
+        }
+
+        // Send the Clerk session token as Authorization header
+        // so the backend can verify the caller is genuinely authenticated
+        const response = await fetch(`${API_BASE_URL}/auth/clerk-sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${clerkSessionToken}`,
+          },
+          body: JSON.stringify({
             email,
             first_name: user.firstName || "Traveler",
             last_name: user.lastName || "",
             clerk_id: user.id,
             role,
-          },
-          false
-        );
+          }),
+        });
+
+        const res = await response.json() as { success: boolean; data?: AuthResponse };
 
         if (res.success && res.data?.access_token) {
           localStorage.setItem("tripzyy_token", res.data.access_token);
@@ -94,7 +111,7 @@ export function ClerkSync() {
         syncingRef.current = false;
       }
     })();
-  }, [isLoaded, isSignedIn, user]);
+  }, [isLoaded, isSignedIn, user, getToken]);
 
   return null;
 }

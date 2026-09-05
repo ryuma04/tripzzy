@@ -150,25 +150,6 @@ function DashboardContent() {
     }
   }, [viewParam, isAdmin, isOperator, isCoordinator, user?.role, router]);
 
-  const handleSwitchRoleView = (view: DashboardRoleView) => {
-    setActiveRoleView(view);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tripzyy_active_role_view", view);
-      const current = getStoredUser();
-      if (current) {
-        updateUser({
-          ...current,
-          role:
-            view === "operator"
-              ? "operator"
-              : view === "admin"
-              ? "admin"
-              : "user",
-        });
-      }
-    }
-  };
-
   // Explorer Data State
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -299,88 +280,9 @@ function DashboardContent() {
 
   return (
     <div className="flex flex-col gap-8 pb-12">
-      {/* ─── Role Perspective Switcher Bar ─── */}
-      <div className="p-3 bg-[#FFFFFF] border-[3.5px] border-[#171313] rounded-2xl shadow-[4px_4px_0px_#171313] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg border-2 border-[#171313] bg-[#FAF7F2] flex items-center justify-center font-black text-xs text-[#E51919] shadow-[2px_2px_0px_#171313]">
-            {activeRoleView === "user" ? (
-              <Compass className="w-4 h-4" />
-            ) : activeRoleView === "operator" ? (
-              <Building2 className="w-4 h-4 text-[#D97706]" />
-            ) : (
-              <Shield className="w-4 h-4 text-[#171313]" />
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-display font-black text-xs uppercase tracking-wider text-[#171313]">
-                Workspace Dashboard
-              </span>
-              <span
-                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-[#171313] text-white ${
-                  activeRoleView === "user"
-                    ? "bg-[#E51919]"
-                    : activeRoleView === "operator"
-                    ? "bg-[#D97706]"
-                    : "bg-[#171313]"
-                }`}
-              >
-                {activeRoleView === "user"
-                  ? "EXPLORER"
-                  : activeRoleView === "operator"
-                  ? "TOUR & TRAVEL"
-                  : "ADMIN"}
-              </span>
-            </div>
-            <span className="text-[11px] font-medium text-neutral-600 block">
-              {user?.first_name ? `${user.first_name} ${user.last_name}` : "Signed in"}
-              {user?.operator_name ? ` • ${user.operator_name}` : ""}
-            </span>
-          </div>
-        </div>
-
-        {/* View Selection Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl self-stretch sm:self-auto overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => handleSwitchRoleView("user")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
-              activeRoleView === "user"
-                ? "bg-[#E51919] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
-                : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
-            }`}
-          >
-            <Compass className="w-3.5 h-3.5" />
-            <span>Explorer</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSwitchRoleView("operator")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
-              activeRoleView === "operator"
-                ? "bg-[#D97706] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
-                : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Tour & Travel</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSwitchRoleView("admin")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
-              activeRoleView === "admin"
-                ? "bg-[#171313] text-white border-[#171313] shadow-[2px_2px_0px_#E51919] -translate-y-0.5"
-                : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Admin</span>
-          </button>
-        </div>
-      </div>
+      {/* ════════════════════════════════════════════════════════════════════════
+          PERSPECTIVE 1: EXPLORER DASHBOARD (TRAVELLER ROLE)
+         ════════════════════════════════════════════════════════════════════════ */}
 
       {/* ════════════════════════════════════════════════════════════════════════
           PERSPECTIVE 1: EXPLORER DASHBOARD (TRAVELLER ROLE)

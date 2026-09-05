@@ -238,6 +238,44 @@ async def clerk_sync(payload: ClerkSyncRequest, db: DbSession):
             await db.commit()
             await db.refresh(user)
 
+    if (payload.role in ("operator", "coordinator", "admin") or
+            str(user.role).lower() in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin")):
+        from app.models import Operator, OperatorMember
+        from app.models.enums import OperatorRole
+
+        existing_mem = await db.scalar(
+            select(OperatorMember).where(
+                OperatorMember.user_id == user.id,
+                OperatorMember.is_active.is_(True),
+            )
+        )
+        if not existing_mem:
+            op = await db.scalar(
+                select(Operator).where(Operator.slug == "tripzyy-journeys")
+            )
+            if op:
+                role_val = getattr(user.role, "value", str(user.role)).lower()
+                op_role = (
+                    OperatorRole.COORDINATOR
+                    if role_val == "coordinator" or payload.role == "coordinator"
+                    else OperatorRole.OWNER
+                )
+                title = (
+                    "Field Coordinator"
+                    if op_role == OperatorRole.COORDINATOR
+                    else "Operations Lead"
+                )
+                db.add(
+                    OperatorMember(
+                        operator_id=op.id,
+                        user_id=user.id,
+                        role=op_role,
+                        job_title=title,
+                        is_active=True,
+                    )
+                )
+                await db.commit()
+
     service = AuthService(db)
     tokens = service.issue_tokens(user)
     tokens.pop("_expires_at", None)

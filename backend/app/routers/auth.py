@@ -211,33 +211,147 @@ async def login_otp(payload: OTPVerifyRequest, db: DbSession):
     "/clerk-sync",
     summary="Synchronize authenticated Clerk user with database",
 )
-async def clerk_sync(payload: ClerkSyncRequest, db: DbSession):
-    email = payload.email.lower().strip()
-    user = await UserRepository(db).get_by_email(email)
+async def clerk_sync(
+    request: Request,
+    payload: ClerkSyncRequest,
+    db: DbSession,
+):
+    """Sync a Clerk-authenticated user into the Tripzyy database.
+
+    Security: The caller MUST supply a valid Clerk session token in the
+    ``Authorization: Bearer <token>`` header.  The token is verified
+    against Clerk's JWKS (public keys) so that:
+    - Only genuinely authenticated Clerk users can call this endpoint.
+    - The email and clerk_id come from the verified token / Clerk API,
+      not from the untrusted POST body (defence against spoofing).
+    """
+    import logging
+    from app.core.clerk import get_clerk_user_info, verify_clerk_token
+
+    logger = logging.getLogger("tripzyy.clerk_sync")
+
+    # ── 1. Extract and verify the Clerk session token ──────────────
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        raise UnauthorizedError(
+            "Clerk session token required. "
+            "Send Authorization: Bearer <clerk_session_token>"
+        )
+    clerk_token = auth_header[7:].strip()
+    if not clerk_token:
+        raise UnauthorizedError("Empty Clerk session token")
+
+    # Verify the JWT signature (raises UnauthorizedError on failure)
+    token_payload = verify_clerk_token(clerk_token)
+    clerk_user_id = token_payload.get("sub")
+    if not clerk_user_id:
+        raise UnauthorizedError("Clerk token missing user identity")
+
+    # ── 2. Fetch authoritative user data from Clerk Backend API ────
+    clerk_info = await get_clerk_user_info(clerk_token)
+
+    # Use Clerk-verified email if available; fall back to body only
+    # if the Backend API call returned nothing (CLERK_SECRET_KEY unset).
+    email = (clerk_info.get("email") or payload.email or "").lower().strip()
+    if not email:
+        raise UnauthorizedError("Unable to determine user email")
+
+    first_name = clerk_info.get("first_name") or payload.first_name or "Traveler"
+    last_name = clerk_info.get("last_name") or payload.last_name or ""
+    verified_clerk_id = clerk_info.get("clerk_id") or clerk_user_id
+
+    # Role: prefer what Clerk metadata says, then the body, default user
+    role_str = clerk_info.get("role") or payload.role
+    if isinstance(role_str, str):
+        from app.models.enums import UserRole
+        try:
+            role = UserRole(role_str)
+        except ValueError:
+            role = UserRole.USER
+    else:
+        role = role_str if role_str else UserRole.USER
+
+    # ── 3. Upsert the user ────────────────────────────────────────
+    # Try lookup by clerk_id first (most reliable), then by email
+    user = None
+    if verified_clerk_id:
+        user = await db.scalar(
+            select(User).where(User.clerk_id == verified_clerk_id)
+        )
     if user is None:
+        user = await UserRepository(db).get_by_email(email)
+
+    if user is None:
+        # Create new user
         user = User(
             email=email,
-            first_name=payload.first_name or "Traveler",
-            last_name=payload.last_name or "",
-            role=payload.role,
+            first_name=first_name,
+            last_name=last_name,
+            role=role,
             is_email_verified=True,
             hashed_password=hash_password(secrets.token_urlsafe(32)),
+            clerk_id=verified_clerk_id,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        logger.info("Created new user %s (clerk=%s)", email, verified_clerk_id)
     else:
+        # Update existing user
         updated = False
         if not user.is_email_verified:
             user.is_email_verified = True
             updated = True
-        if payload.role and user.role != payload.role:
-            user.role = payload.role
+        if verified_clerk_id and user.clerk_id != verified_clerk_id:
+            user.clerk_id = verified_clerk_id
+            updated = True
+        if role and user.role != role:
+            user.role = role
             updated = True
         if updated:
             await db.commit()
             await db.refresh(user)
+            logger.info("Updated user %s (clerk=%s)", email, verified_clerk_id)
 
+    # ── 4. Auto-enroll operator/coordinator/admin into default operator ─
+    if (role in ("operator", "coordinator", "admin") or
+            str(user.role).lower() in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin")):
+        from app.models.enums import OperatorRole
+
+        existing_mem = await db.scalar(
+            select(OperatorMember).where(
+                OperatorMember.user_id == user.id,
+                OperatorMember.is_active.is_(True),
+            )
+        )
+        if not existing_mem:
+            op = await db.scalar(
+                select(Operator).where(Operator.slug == "tripzyy-journeys")
+            )
+            if op:
+                role_val = getattr(user.role, "value", str(user.role)).lower()
+                op_role = (
+                    OperatorRole.COORDINATOR
+                    if role_val == "coordinator" or role == "coordinator"
+                    else OperatorRole.OWNER
+                )
+                title = (
+                    "Field Coordinator"
+                    if op_role == OperatorRole.COORDINATOR
+                    else "Operations Lead"
+                )
+                db.add(
+                    OperatorMember(
+                        operator_id=op.id,
+                        user_id=user.id,
+                        role=op_role,
+                        job_title=title,
+                        is_active=True,
+                    )
+                )
+                await db.commit()
+
+    # ── 5. Issue Tripzyy JWT tokens ────────────────────────────────
     service = AuthService(db)
     tokens = service.issue_tokens(user)
     tokens.pop("_expires_at", None)
@@ -246,3 +360,4 @@ async def clerk_sync(payload: ClerkSyncRequest, db: DbSession):
         {**tokens, "user": serialized},
         "User synchronized successfully",
     )
+

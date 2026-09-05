@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     # --- Google Places API ---
     GOOGLE_PLACES_API: str | None = None
 
+    # --- Clerk (external auth provider) ---
+    CLERK_SECRET_KEY: str | None = None
+    CLERK_PUBLISHABLE_KEY: str | None = None
+
     @field_validator("SECRET_KEY")
     @classmethod
     def _reject_placeholder_secret(cls, v: str) -> str:

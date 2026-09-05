@@ -288,3 +288,113 @@ async def test_refresh_issues_a_new_access_token(
     resp = await client.post("/auth/refresh", json={"refresh_token": refresh})
     assert resp.status_code == 200
     assert resp.json()["data"]["access_token"]
+
+
+# --------------------------------------------------------------------------
+# Clerk Sync
+# --------------------------------------------------------------------------
+
+async def test_clerk_sync_requires_bearer_token(client: AsyncClient):
+    resp = await client.post(
+        "/auth/clerk-sync",
+        json={"email": "test@example.com", "first_name": "Test", "last_name": "User"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+async def test_clerk_sync_rejects_invalid_token(client: AsyncClient, monkeypatch):
+    from app.core.exceptions import UnauthorizedError
+
+    def mock_verify(token: str):
+        raise UnauthorizedError("Invalid or expired Clerk session token")
+
+    monkeypatch.setattr("app.core.clerk.verify_clerk_token", mock_verify)
+
+    resp = await client.post(
+        "/auth/clerk-sync",
+        headers={"Authorization": "Bearer bad_token"},
+        json={"email": "test@example.com"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+async def test_clerk_sync_creates_and_authenticates_user(
+    client: AsyncClient, monkeypatch
+):
+    clerk_id = "user_test_clerk_sync_123"
+    email = "clerk.traveler@example.com"
+
+    monkeypatch.setattr(
+        "app.core.clerk.verify_clerk_token",
+        lambda token: {"sub": clerk_id, "iss": "https://clerk.example.com"},
+    )
+
+    async def mock_get_info(token: str):
+        return {
+            "clerk_id": clerk_id,
+            "email": email,
+            "first_name": "Clerk",
+            "last_name": "Explorer",
+            "role": "user",
+        }
+
+    monkeypatch.setattr("app.core.clerk.get_clerk_user_info", mock_get_info)
+
+    resp = await client.post(
+        "/auth/clerk-sync",
+        headers={"Authorization": "Bearer valid_clerk_session"},
+        json={"email": email, "first_name": "Clerk", "last_name": "Explorer"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    data = body["data"]
+    assert data["access_token"]
+    assert data["refresh_token"]
+    assert data["user"]["email"] == email
+    assert data["user"]["first_name"] == "Clerk"
+
+    # Verify session works with issued Tripzyy JWT
+    me_resp = await client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {data['access_token']}"},
+    )
+    assert me_resp.status_code == 200
+    assert me_resp.json()["data"]["email"] == email
+
+
+async def test_clerk_sync_links_existing_user(
+    client: AsyncClient, registration, monkeypatch
+):
+    # Register existing user
+    reg = await client.post("/auth/register", json=registration)
+    assert reg.status_code == 201
+
+    clerk_id = "user_clerk_linked_456"
+    monkeypatch.setattr(
+        "app.core.clerk.verify_clerk_token",
+        lambda token: {"sub": clerk_id},
+    )
+
+    async def mock_get_info(token: str):
+        return {
+            "clerk_id": clerk_id,
+            "email": registration["email"],
+            "first_name": registration["first_name"],
+            "last_name": registration["last_name"],
+            "role": "user",
+        }
+
+    monkeypatch.setattr("app.core.clerk.get_clerk_user_info", mock_get_info)
+
+    resp = await client.post(
+        "/auth/clerk-sync",
+        headers={"Authorization": "Bearer valid_clerk_session"},
+        json={"email": registration["email"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["user"]["email"] == registration["email"].lower()
+

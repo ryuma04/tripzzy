@@ -12,8 +12,11 @@ from app.core.exceptions import UnauthorizedError
 from app.core.rate_limit import rate_limit_auth
 from app.repositories.user_repository import UserRepository
 from sqlalchemy import select
+import secrets
+from app.core.security import hash_password
 from app.models import Operator, OperatorMember, User
 from app.schemas.auth import (
+    ClerkSyncRequest,
     LoginRequest,
     OTPRequest,
     OTPVerifyRequest,
@@ -201,4 +204,39 @@ async def login_otp(payload: OTPVerifyRequest, db: DbSession):
     return responses.success(
         {**tokens, "user": UserResponse.model_validate(user).model_dump()},
         "Signed in successfully",
+    )
+
+
+@router.post(
+    "/clerk-sync",
+    summary="Synchronize authenticated Clerk user with database",
+)
+async def clerk_sync(payload: ClerkSyncRequest, db: DbSession):
+    email = payload.email.lower().strip()
+    user = await UserRepository(db).get_by_email(email)
+    if user is None:
+        user = User(
+            email=email,
+            first_name=payload.first_name or "Traveler",
+            last_name=payload.last_name or "",
+            role=payload.role,
+            is_email_verified=True,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    else:
+        if not user.is_email_verified:
+            user.is_email_verified = True
+            await db.commit()
+            await db.refresh(user)
+
+    service = AuthService(db)
+    tokens = service.issue_tokens(user)
+    tokens.pop("_expires_at", None)
+    serialized = await _serialize_user(user, db)
+    return responses.success(
+        {**tokens, "user": serialized},
+        "User synchronized successfully",
     )

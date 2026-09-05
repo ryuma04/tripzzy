@@ -21,6 +21,7 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { NeoButton } from "@/components/ui/neo-button";
 import { OtpInput } from "@/components/ui/otp-input";
 import { useToast } from "@/components/ui/toast";
+import { SignIn } from "@clerk/nextjs";
 import { login, requestLoginOtp, loginWithOtp, getRoleRedirectPath } from "@/lib/auth";
 import type { UserRole } from "@/types";
 
@@ -48,7 +49,7 @@ function LoginContent() {
     return next;
   };
 
-  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [authMode, setAuthMode] = useState<"clerk" | "password" | "otp">("clerk");
   const [selectedRole, setSelectedRole] = useState<UserRole>("user");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -257,7 +258,21 @@ function LoginContent() {
       </div>
 
       {/* Auth Mode Toggle */}
-      <div className="grid grid-cols-2 gap-2 p-1.5 bg-[#FAF7F2] border-[2.5px] border-[#171313] rounded-xl mb-6 shadow-[2px_2px_0px_#171313]">
+      <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-[#FAF7F2] border-[2.5px] border-[#171313] rounded-xl mb-6 shadow-[2px_2px_0px_#171313]">
+        <button
+          type="button"
+          onClick={() => {
+            setAuthMode("clerk");
+            setErrors({});
+          }}
+          className={`py-2 text-[11px] font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
+            authMode === "clerk"
+              ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
+              : "border-transparent text-[#171313] hover:bg-[#F3ECE2]"
+          }`}
+        >
+          ⚡ Clerk OTP
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -265,13 +280,13 @@ function LoginContent() {
             setIsOtpSent(false);
             setErrors({});
           }}
-          className={`py-2 text-xs font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
+          className={`py-2 text-[11px] font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
             authMode === "password"
               ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
               : "border-transparent text-[#171313] hover:bg-[#F3ECE2]"
           }`}
         >
-          Password Login
+          Password
         </button>
         <button
           type="button"
@@ -279,13 +294,13 @@ function LoginContent() {
             setAuthMode("otp");
             setErrors({});
           }}
-          className={`py-2 text-xs font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
+          className={`py-2 text-[11px] font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
             authMode === "otp"
               ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
               : "border-transparent text-[#171313] hover:bg-[#F3ECE2]"
           }`}
         >
-          Instant OTP Code
+          Direct OTP
         </button>
       </div>
 
@@ -297,6 +312,24 @@ function LoginContent() {
           <p className="text-[11px] font-medium text-neutral-700 mt-0.5">
             Sign in again to pick up where you left off.
           </p>
+        </div>
+      )}
+
+      {/* Mode 0: Clerk Sign In */}
+      {authMode === "clerk" && (
+        <div className="flex justify-center my-2">
+          <SignIn
+            routing="hash"
+            fallbackRedirectUrl="/dashboard"
+            appearance={{
+              elements: {
+                rootBox: "w-full",
+                card: "w-full shadow-none border-2 border-[#171313] rounded-2xl bg-white",
+                formButtonPrimary:
+                  "bg-[#E51919] hover:bg-[#c41515] text-white font-bold border-2 border-[#171313] shadow-[2px_2px_0px_#171313]",
+              },
+            }}
+          />
         </div>
       )}
 

@@ -26,6 +26,7 @@ import { NeoInput } from "@/components/ui/neo-input";
 import { NeoButton } from "@/components/ui/neo-button";
 import { OtpInput } from "@/components/ui/otp-input";
 import { useToast } from "@/components/ui/toast";
+import { SignUp } from "@clerk/nextjs";
 import { register, login, getRoleRedirectPath } from "@/lib/auth";
 import type { UserRole } from "@/types";
 
@@ -87,6 +88,7 @@ export default function RegisterPage() {
 
   const [role, setRole] = useState<OnboardingRole>("user");
   const [step, setStep] = useState<"details" | "otp">("details");
+  const [registrationMethod, setRegistrationMethod] = useState<"clerk" | "custom">("clerk");
 
   // User details state
   const [formData, setFormData] = useState({
@@ -351,209 +353,78 @@ export default function RegisterPage() {
         <span>{currentConfig.bannerNote}</span>
       </div>
 
-      {/* ─── CASE A: ADMIN SELECTED (Admin ID & Password) ─── */}
-      {role === "admin" ? (
-        <form onSubmit={handleAdminSubmit} className="flex flex-col gap-4">
-          <NeoInput
-            label="Admin ID / Email"
-            name="adminId"
-            placeholder="admin@tripzyy.com"
-            value={adminData.adminId}
-            onChange={(e) =>
-              setAdminData({ ...adminData, adminId: e.target.value })
-            }
-            error={errors.adminId}
-            leftIcon={<Mail className="w-4 h-4" />}
-            required
-          />
+      {/* Registration Method Switcher */}
+      <div className="grid grid-cols-2 gap-2 p-1.5 bg-[#FAF7F2] border-[2.5px] border-[#171313] rounded-xl mb-6 shadow-[2px_2px_0px_#171313]">
+        <button
+          type="button"
+          onClick={() => setRegistrationMethod("clerk")}
+          className={`py-2 text-xs font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
+            registrationMethod === "clerk"
+              ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
+              : "border-transparent text-[#171313] hover:bg-[#F3ECE2]"
+          }`}
+        >
+          ⚡ Clerk Sign Up (Instant OTP)
+        </button>
+        <button
+          type="button"
+          onClick={() => setRegistrationMethod("custom")}
+          className={`py-2 text-xs font-display font-extrabold uppercase rounded-lg border-2 transition-all cursor-pointer ${
+            registrationMethod === "custom"
+              ? "bg-[#E51919] text-[#FFFFFF] border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
+              : "border-transparent text-[#171313] hover:bg-[#F3ECE2]"
+          }`}
+        >
+          Custom Setup Form
+        </button>
+      </div>
 
-          <NeoInput
-            label="Admin Password"
-            type="password"
-            name="adminPassword"
-            placeholder="••••••••••••"
-            value={adminData.adminPassword}
-            onChange={(e) =>
-              setAdminData({ ...adminData, adminPassword: e.target.value })
-            }
-            error={errors.adminPassword}
-            leftIcon={<Lock className="w-4 h-4" />}
-            required
+      {registrationMethod === "clerk" ? (
+        <div className="flex justify-center my-4">
+          <SignUp
+            routing="hash"
+            fallbackRedirectUrl="/dashboard"
+            appearance={{
+              elements: {
+                rootBox: "w-full",
+                card: "w-full shadow-none border-2 border-[#171313] rounded-2xl bg-white",
+                formButtonPrimary:
+                  "bg-[#E51919] hover:bg-[#c41515] text-white font-bold border-2 border-[#171313] shadow-[2px_2px_0px_#171313]",
+              },
+            }}
           />
-
-          <NeoButton
-            type="submit"
-            variant="primary"
-            size="lg"
-            isLoading={isLoading}
-            rightIcon={<ArrowRight className="w-5 h-5" />}
-            className="w-full mt-2"
-          >
-            Access Admin Command Station
-          </NeoButton>
-        </form>
+        </div>
       ) : (
-        /* ─── CASE B: EXPLORER, COORDINATOR, OPERATOR ─── */
         <>
-          {/* Step Progress Pills */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#171313] text-xs font-extrabold ${
-                step === "details"
-                  ? "bg-[#E51919] text-[#FFFFFF] shadow-[2px_2px_0px_#171313]"
-                  : "bg-[#15803D] text-[#FFFFFF]"
-              }`}
-            >
-              {step === "otp" ? <Check className="w-3.5 h-3.5" /> : "1"}
-              <span>1 Details & Credentials</span>
-            </div>
-            <div className="w-4 h-0.5 bg-[#171313]" />
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#171313] text-xs font-extrabold ${
-                step === "otp"
-                  ? "bg-[#E51919] text-[#FFFFFF] shadow-[2px_2px_0px_#171313]"
-                  : "bg-[#FAF7F2] text-[#171313]"
-              }`}
-            >
-              <span>2</span>
-              <span>2 Code Confirmation</span>
-            </div>
-          </div>
-
-          {step === "details" ? (
-            <form onSubmit={handleProceedToOtp} className="flex flex-col gap-4">
-              {/* Photo Upload */}
-              <div className="flex items-center gap-4 p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl">
-                <div className="relative w-16 h-16 rounded-xl border-2 border-[#171313] bg-[#FFFFFF] overflow-hidden flex items-center justify-center text-neutral-400 flex-shrink-0 shadow-[2px_2px_0px_#171313]">
-                  {avatarPreview ? (
-                    <img
-                      src={avatarPreview}
-                      alt="Avatar preview"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <UserIcon className="w-8 h-8 text-neutral-400" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <label className="font-display font-extrabold text-xs uppercase block text-[#171313] mb-1">
-                    Profile Avatar / Station Photo
-                  </label>
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FFFFFF] hover:bg-[#FFFAF3] text-[#171313] border-2 border-[#171313] rounded-lg text-xs font-bold shadow-[2px_2px_0px_#171313] cursor-pointer transition-all">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Picture</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Role-Specific: Organization / Company Name for Operator & Coordinator */}
-              {role !== "user" && (
-                <NeoInput
-                  label={
-                    role === "operator"
-                      ? "Tour Operator / Agency Brand"
-                      : "Tour Agency / Operating Company"
-                  }
-                  name="companyName"
-                  placeholder="e.g. Tripzyy Journeys or Himalayan Treks"
-                  value={formData.companyName}
-                  onChange={handleInputChange}
-                  error={errors.companyName}
-                  leftIcon={<Building2 className="w-4 h-4" />}
-                  required
-                />
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <NeoInput
-                  label="First Name"
-                  name="firstName"
-                  placeholder="Sanket"
-                  value={formData.firstName}
-                  onChange={handleInputChange}
-                  error={errors.firstName}
-                  required
-                />
-                <NeoInput
-                  label="Last Name"
-                  name="lastName"
-                  placeholder="Bhandari"
-                  value={formData.lastName}
-                  onChange={handleInputChange}
-                  error={errors.lastName}
-                  required
-                />
-              </div>
-
+          {/* ─── CASE A: ADMIN SELECTED (Admin ID & Password) ─── */}
+          {role === "admin" ? (
+            <form onSubmit={handleAdminSubmit} className="flex flex-col gap-4">
               <NeoInput
-                label="Email Address"
-                type="email"
-                name="email"
-                placeholder={
-                  role === "operator"
-                    ? "ops@tripzyy.com"
-                    : role === "coordinator"
-                    ? "coordinator@tripzyy.com"
-                    : "sanket@tripzyy.com"
+                label="Admin ID / Email"
+                name="adminId"
+                placeholder="admin@tripzyy.com"
+                value={adminData.adminId}
+                onChange={(e) =>
+                  setAdminData({ ...adminData, adminId: e.target.value })
                 }
-                value={formData.email}
-                onChange={handleInputChange}
-                error={errors.email}
+                error={errors.adminId}
                 leftIcon={<Mail className="w-4 h-4" />}
                 required
               />
 
               <NeoInput
-                label="Phone Number"
-                type="tel"
-                name="phone"
-                placeholder="+91 98765 43210"
-                value={formData.phone}
-                onChange={handleInputChange}
-                leftIcon={<Phone className="w-4 h-4" />}
-              />
-
-              <NeoInput
-                label="Password"
+                label="Admin Password"
                 type="password"
-                name="password"
+                name="adminPassword"
                 placeholder="••••••••••••"
-                value={formData.password}
-                onChange={handleInputChange}
-                error={errors.password}
+                value={adminData.adminPassword}
+                onChange={(e) =>
+                  setAdminData({ ...adminData, adminPassword: e.target.value })
+                }
+                error={errors.adminPassword}
                 leftIcon={<Lock className="w-4 h-4" />}
                 required
               />
-
-              <div>
-                <label className="font-display font-extrabold text-xs uppercase tracking-wider text-[#171313] block mb-1.5">
-                  {role === "user"
-                    ? "Explorer Bio & Travel Style"
-                    : role === "coordinator"
-                    ? "Field Credentials & Experience"
-                    : "Agency Description & Regional Speciality"}
-                </label>
-                <textarea
-                  name="bio"
-                  rows={2}
-                  placeholder={
-                    role === "user"
-                      ? "Passionate mountain trekker and coastal explorer from Mumbai..."
-                      : role === "coordinator"
-                      ? "5+ years leading high-altitude Himalayan treks and coastal expeditions..."
-                      : "Boutique multi-city tour operator specializing in Western Ghats & North-East tours..."
-                  }
-                  value={formData.bio}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 bg-[#FFFFFF] border-[3px] border-[#171313] rounded-xl text-sm font-medium text-[#171313] placeholder:text-neutral-500 shadow-[3px_3px_0px_#171313] focus:outline-none focus:bg-[#FFFAF3] focus:shadow-[4px_4px_0px_#E51919] transition-all resize-none"
-                />
-              </div>
 
               <NeoButton
                 type="submit"
@@ -563,83 +434,226 @@ export default function RegisterPage() {
                 rightIcon={<ArrowRight className="w-5 h-5" />}
                 className="w-full mt-2"
               >
-                Continue to Verification
+                Access Admin Command Station
               </NeoButton>
             </form>
           ) : (
-            <form
-              onSubmit={handleCompleteRegistration}
-              className="flex flex-col gap-5"
-            >
-              <div className="p-4 bg-[#FFF4E6] border-2 border-[#171313] rounded-xl text-center">
-                <span className="text-xs font-bold text-neutral-600 block">
-                  We sent a 6-digit verification token to:
-                </span>
-                <span className="font-display font-extrabold text-sm text-[#171313] block">
-                  {formData.email}
-                </span>
-                <span className="inline-block mt-2 px-2.5 py-0.5 rounded-md border border-[#171313] text-[10px] font-extrabold uppercase bg-[#FFFFFF]">
-                  Role: {ROLE_CONFIGS[role].badge}
-                </span>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="font-display font-extrabold text-xs uppercase tracking-wider text-[#171313]">
-                    Enter 6-Digit Verification Code
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setStep("details")}
-                    className="text-xs font-bold text-[#E51919] hover:underline cursor-pointer"
-                  >
-                    Edit Info
-                  </button>
-                </div>
-
-                <div className="py-2">
-                  <OtpInput
-                    length={6}
-                    value={otp}
-                    onChange={setOtp}
-                    onComplete={(code) => setOtp(code)}
-                  />
-                </div>
-
-                {errors.otp && (
-                  <span className="text-xs font-bold text-red-600 block mt-1">
-                    {errors.otp}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between text-xs font-bold text-neutral-600">
-                <span>Resend available in {countdown}s</span>
-                <button
-                  type="button"
-                  disabled={countdown > 0}
-                  onClick={handleProceedToOtp}
-                  className={`hover:underline ${
-                    countdown > 0
-                      ? "opacity-50 cursor-not-allowed"
-                      : "text-[#E51919] cursor-pointer"
+            /* ─── CASE B: EXPLORER, COORDINATOR, OPERATOR ─── */
+            <>
+              {/* Step Progress Pills */}
+              <div className="flex items-center justify-center gap-2 mb-6">
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#171313] text-xs font-extrabold ${
+                    step === "details"
+                      ? "bg-[#E51919] text-[#FFFFFF] shadow-[2px_2px_0px_#171313]"
+                      : "bg-[#15803D] text-[#FFFFFF]"
                   }`}
                 >
-                  Resend Code
-                </button>
+                  {step === "otp" ? <Check className="w-3.5 h-3.5" /> : "1"}
+                  <span>1 Details & Credentials</span>
+                </div>
+                <div className="w-4 h-0.5 bg-[#171313]" />
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#171313] text-xs font-extrabold ${
+                    step === "otp"
+                      ? "bg-[#E51919] text-[#FFFFFF] shadow-[2px_2px_0px_#171313]"
+                      : "bg-[#FAF7F2] text-[#171313]"
+                  }`}
+                >
+                  <span>2</span>
+                  <span>2 Code Confirmation</span>
+                </div>
               </div>
 
-              <NeoButton
-                type="submit"
-                variant="primary"
-                size="lg"
-                isLoading={isLoading}
-                rightIcon={<ShieldCheck className="w-5 h-5" />}
-                className="w-full"
-              >
-                Verify & Create {ROLE_CONFIGS[role].badge} Account
-              </NeoButton>
-            </form>
+              {step === "details" ? (
+                <form onSubmit={handleProceedToOtp} className="flex flex-col gap-4">
+                  {/* Photo Upload */}
+                  <div className="flex items-center gap-4 p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl">
+                    <div className="relative w-16 h-16 rounded-xl border-2 border-[#171313] bg-[#FFFFFF] overflow-hidden flex items-center justify-center text-neutral-400 flex-shrink-0 shadow-[2px_2px_0px_#171313]">
+                      {avatarPreview ? (
+                        <img
+                          src={avatarPreview}
+                          alt="Avatar preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <UserIcon className="w-8 h-8 text-neutral-400" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <label className="font-display font-extrabold text-xs uppercase block text-[#171313] mb-1">
+                        Profile Avatar / Station Photo
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FFFFFF] hover:bg-[#FFFAF3] text-[#171313] border-2 border-[#171313] rounded-lg text-xs font-bold shadow-[2px_2px_0px_#171313] cursor-pointer transition-all">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Picture</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Name Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <NeoInput
+                      label="First Name"
+                      name="firstName"
+                      placeholder="Kabir"
+                      value={formData.firstName}
+                      onChange={handleInputChange}
+                      error={errors.firstName}
+                      required
+                    />
+                    <NeoInput
+                      label="Last Name"
+                      name="lastName"
+                      placeholder="Verma"
+                      value={formData.lastName}
+                      onChange={handleInputChange}
+                      error={errors.lastName}
+                      required
+                    />
+                  </div>
+
+                  {/* Email Field */}
+                  <NeoInput
+                    label="Email Address"
+                    type="email"
+                    name="email"
+                    placeholder="wanderer@tripzyy.com"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    error={errors.email}
+                    leftIcon={<Mail className="w-4 h-4" />}
+                    required
+                  />
+
+                  {/* Phone Field */}
+                  <NeoInput
+                    label="Phone Number"
+                    type="tel"
+                    name="phone"
+                    placeholder="+91 98765 43210"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    error={errors.phone}
+                    leftIcon={<Phone className="w-4 h-4" />}
+                    required
+                  />
+
+                  {/* Password Field */}
+                  <NeoInput
+                    label="Security Password"
+                    type="password"
+                    name="password"
+                    placeholder="Minimum 6 characters"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    error={errors.password}
+                    leftIcon={<Lock className="w-4 h-4" />}
+                    required
+                  />
+
+                  {/* Conditional Role-Specific Fields */}
+                  {(role === "coordinator" || role === "operator") && (
+                    <NeoInput
+                      label={
+                        role === "operator"
+                          ? "Tour Company / Agency Name"
+                          : "Primary Operating Agency"
+                      }
+                      name="companyName"
+                      placeholder="Himalayan Trails Ltd."
+                      value={formData.companyName}
+                      onChange={handleInputChange}
+                      error={errors.companyName}
+                      leftIcon={<Building2 className="w-4 h-4" />}
+                      required
+                    />
+                  )}
+
+                  <NeoButton
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    isLoading={isLoading}
+                    rightIcon={<ArrowRight className="w-5 h-5" />}
+                    className="w-full mt-2"
+                  >
+                    Proceed to Verification Token
+                  </NeoButton>
+                </form>
+              ) : (
+                /* Step 2: OTP Verification */
+                <form onSubmit={handleCompleteRegistration} className="flex flex-col gap-4">
+                  <div className="p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl">
+                    <p className="text-xs font-bold text-neutral-700">
+                      Sending token to:{" "}
+                      <span className="font-extrabold text-[#171313]">
+                        {formData.email}
+                      </span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setStep("details")}
+                      className="text-xs font-bold text-[#E51919] hover:underline cursor-pointer mt-1"
+                    >
+                      Change Details
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="font-display font-extrabold text-xs uppercase tracking-wider block text-[#171313] mb-2">
+                      Enter 6-Digit Code
+                    </label>
+                    <div className="py-2">
+                      <OtpInput
+                        length={6}
+                        value={otp}
+                        onChange={setOtp}
+                        onComplete={(code) => setOtp(code)}
+                      />
+                    </div>
+                    {errors.otp && (
+                      <span className="text-xs font-bold text-red-600 block mt-1">
+                        {errors.otp}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs font-bold text-neutral-600">
+                    <span>Code expires in {countdown}s</span>
+                    <button
+                      type="button"
+                      disabled={countdown > 0}
+                      onClick={handleProceedToOtp}
+                      className={`hover:underline ${
+                        countdown > 0
+                          ? "opacity-50 cursor-not-allowed"
+                          : "text-[#E51919] cursor-pointer"
+                      }`}
+                    >
+                      Resend Code
+                    </button>
+                  </div>
+
+                  <NeoButton
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    isLoading={isLoading}
+                    rightIcon={<ShieldCheck className="w-5 h-5" />}
+                    className="w-full"
+                  >
+                    Verify & Create {ROLE_CONFIGS[role].badge} Account
+                  </NeoButton>
+                </form>
+              )}
+            </>
           )}
         </>
       )}

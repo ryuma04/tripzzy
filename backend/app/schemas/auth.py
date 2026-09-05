@@ -138,3 +138,11 @@ class RegisterResponse(BaseModel):
     refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int | None = None
+
+
+class ClerkSyncRequest(BaseModel):
+    email: EmailStr
+    first_name: str | None = None
+    last_name: str | None = None
+    clerk_id: str | None = None
+    role: UserRole = UserRole.USER

@@ -31,7 +31,7 @@ export interface Pagination {
 
 // ─── User ──────────────────────────────────
 
-export type UserRole = "user" | "coordinator" | "operator" | "admin";
+export type UserRole = "user" | "coordinator" | "operator";
 
 export interface User {
   id: string;
@@ -48,7 +48,7 @@ export interface User {
   operator_role?: "owner" | "manager" | "coordinator";
   operator_id?: string;
   operator_name?: string;
-  /** Mirrors the `user_status` enum; drives suspend/reactivate in the admin console. */
+  /** Mirrors the `user_status` enum; drives user account status. */
   status?: "active" | "suspended" | "deleted";
   is_email_verified?: boolean;
   created_at: string;
@@ -825,68 +825,6 @@ export interface CommunityTrip {
     avatar_url?: string;
   };
   created_at: string;
-}
-
-// ─── Admin ─────────────────────────────────
-
-/**
- * Mirrors `AdminService.dashboard`. The previous flat shape
- * (`total_users`, `recent_users`, `trip_trends`, …) matched nothing the API
- * returns — the admin page was rendering `mockAdminDashboard` instead of
- * ever calling `/admin/dashboard`.
- */
-export interface AdminDashboard {
-  users: {
-    total: number;
-    active: number;
-    new_last_30_days: number;
-  };
-  trips: {
-    total: number;
-    new_last_30_days: number;
-    public: number;
-    cloned: number;
-    by_status: Record<TripStatus, number>;
-  };
-  content: {
-    destinations: number;
-    catalog_activities: number;
-    trip_stops: number;
-    scheduled_activities: number;
-  };
-  money: {
-    /** Money is a string end to end. */
-    average_trip_budget: string;
-    total_recorded_expenses: string;
-  };
-}
-
-export interface TripAnalytics {
-  trips_per_month: {
-    month: string | null;
-    count: number;
-    average_budget: string;
-  }[];
-  budget_distribution: { bucket: string; count: number }[];
-  average_duration_days: number;
-}
-
-export interface DestinationAnalytics {
-  most_visited: {
-    city_name: string;
-    stop_count: number;
-    trip_count: number;
-  }[];
-  never_used: { name: string; country: string }[];
-}
-
-export interface ActivityAnalytics {
-  by_category: {
-    category: string;
-    count: number;
-    average_cost: string;
-  }[];
-  most_scheduled: { title: string; count: number }[];
 }
 
 // ─── AI Travel Plans (Two Real Options) ─────

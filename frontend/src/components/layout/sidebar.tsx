@@ -100,7 +100,7 @@ const secondaryNavItems: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const pathname = usePathname() || "/dashboard";
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { user, isAdmin, isOperator, isCoordinator } = useAuthUser();
+  const { user, isOperator, isCoordinator } = useAuthUser();
   const { signOut } = useClerk();
 
   const [isOperatorStaff, setIsOperatorStaff] = useState(false);
@@ -119,7 +119,6 @@ export const Sidebar: React.FC = () => {
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isActive = (href: string) => {
-    if (href === "/admin" && pathname.startsWith("/admin")) return true;
     if (href === "/operator" && pathname.startsWith("/operator")) return true;
     if (href === "/dashboard" && (pathname === "/" || pathname === "/dashboard")) return true;
     if (href === "/trips" && pathname === "/trips") return true;
@@ -340,9 +339,7 @@ export const Sidebar: React.FC = () => {
               </span>
               <span
                 className={`text-[9px] font-black uppercase tracking-wider ${
-                  isAdmin
-                    ? "text-[#171313]"
-                    : isOperator || user?.role === "operator"
+                  isOperator || user?.role === "operator"
                     ? "text-[#D97706]"
                     : isCoordinator || user?.role === "coordinator"
                     ? "text-[#7C3AED]"

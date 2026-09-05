@@ -136,8 +136,6 @@ export function ClerkSync() {
               res.data.user.operator_role
             ) {
               localStorage.setItem("tripzyy_active_role_view", "operator");
-            } else if (res.data.user.role === "admin") {
-              localStorage.setItem("tripzyy_active_role_view", "admin");
             } else {
               localStorage.setItem("tripzyy_active_role_view", "user");
             }

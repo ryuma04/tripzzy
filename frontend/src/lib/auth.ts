@@ -262,7 +262,6 @@ export function useAuthUser() {
   return {
     user,
     role: user?.role ?? null,
-    isAdmin: user?.role === "admin",
     isOperator: user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager",
     isCoordinator: user?.role === "coordinator" || user?.operator_role === "coordinator",
     isUser: user?.role === "user" && !user?.operator_role,

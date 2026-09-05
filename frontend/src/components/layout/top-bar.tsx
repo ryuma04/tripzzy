@@ -87,9 +87,7 @@ export const TopBar: React.FC = () => {
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 sm:gap-4 ml-auto">
-        {/* Role indicator. Read-only: the role comes from the server on the
-            access token. This used to be a button that flipped it in
-            localStorage, which was a one-click self-promotion to admin. */}
+        {/* Role indicator. Read-only: the role comes from the server on the access token. */}
         {/* Dynamic Role Badge */}
         {user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
           <span

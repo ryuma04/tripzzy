@@ -69,10 +69,8 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 async def require_admin(current_user: CurrentUser) -> User:
-    """Spec section 18: admin endpoints need authentication *and* role=admin."""
-    if not current_user.is_admin:
-        raise ForbiddenError("This action requires administrator privileges")
-    return current_user
+    """Admin functionality has been permanently disabled."""
+    raise ForbiddenError("Administration functionality has been disabled.")
 
 
 AdminUser = Annotated[User, Depends(require_admin)]
@@ -105,7 +103,7 @@ async def require_operator_member(
     )
     if membership is None:
         role_str = getattr(current_user.role, "value", str(current_user.role)).lower()
-        if role_str in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin"):
+        if role_str in ("operator", "coordinator", "userrole.operator", "userrole.coordinator"):
             from app.models import Operator
             from app.models.enums import OperatorRole
 

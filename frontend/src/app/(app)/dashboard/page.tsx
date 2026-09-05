@@ -57,7 +57,7 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams?.get("view") as DashboardRoleView | null;
-  const { user, isAdmin, isOperator, isCoordinator, isMounted, updateUser } =
+  const { user, isOperator, isCoordinator, isMounted, updateUser } =
     useAuthUser();
 
   // Active Role Perspective (auto-detected from logged in user, URL, or toggled)

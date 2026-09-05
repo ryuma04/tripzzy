@@ -34,10 +34,9 @@ import { SplitBillModal } from "@/components/budget/split-bill-modal";
 import { tripService } from "@/services/trips";
 import { destinationService } from "@/services/destinations";
 import { operatorService } from "@/services/operator";
-import { adminService } from "@/services/admin";
 import { operatorAssistService } from "@/services/engagement";
 import { operatorAdaptationService } from "@/services/adaptation";
-import { getCurrentUser, useAuthUser, switchToAdminUser, getStoredUser } from "@/lib/auth";
+import { getCurrentUser, useAuthUser, getStoredUser } from "@/lib/auth";
 import { DEMO_TRIPS, DEMO_DESTINATIONS } from "@/lib/demo-data";
 import { DEMO_MODE } from "@/lib/demo-mode";
 import { unwrapItems } from "@/lib/api";
@@ -47,13 +46,12 @@ import type {
   User,
   TourGroup,
   OperatorDashboard,
-  AdminDashboard,
   AssistThread,
   ChangeRequest,
   Disruption,
 } from "@/types";
 
-type DashboardRoleView = "user" | "operator" | "admin";
+type DashboardRoleView = "user" | "operator";
 
 function DashboardContent() {
   const router = useRouter();
@@ -67,22 +65,21 @@ function DashboardContent() {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const urlView = urlParams.get("view") as DashboardRoleView | null;
-      if (urlView === "operator" || urlView === "user" || urlView === "admin") {
+      if (urlView === "operator" || urlView === "user") {
         return urlView;
       }
       const pending = localStorage.getItem("tripzyy_pending_role") as DashboardRoleView | null;
-      if (pending === "operator" || pending === "admin" || pending === "user") {
+      if (pending === "operator" || pending === "user") {
         return pending;
       }
       const saved = localStorage.getItem("tripzyy_active_role_view") as DashboardRoleView | null;
-      if (saved === "operator" || saved === "admin" || saved === "user") {
+      if (saved === "operator" || saved === "user") {
         return saved;
       }
       const stored = getStoredUser();
       if (stored?.role === "operator" || stored?.role === "coordinator" || stored?.operator_role) {
         return "operator";
       }
-      if (stored?.role === "admin") return "admin";
     }
     return "user";
   });
@@ -101,25 +98,16 @@ function DashboardContent() {
     const savedActiveView = localStorage.getItem("tripzyy_active_role_view");
 
     const isStaff = Boolean(
-      isAdmin ||
       isOperator ||
       isCoordinator ||
       effectiveUser?.role === "operator" ||
       effectiveUser?.role === "coordinator" ||
-      effectiveUser?.role === "admin" ||
       effectiveUser?.operator_role === "owner" ||
       effectiveUser?.operator_role === "manager" ||
       effectiveUser?.operator_role === "coordinator" ||
       pendingRole === "operator" ||
       pendingRole === "coordinator" ||
       savedActiveView === "operator"
-    );
-
-    const isSystemAdmin = Boolean(
-      isAdmin ||
-      effectiveUser?.role === "admin" ||
-      pendingRole === "admin" ||
-      savedActiveView === "admin"
     );
 
     // 1. URL search param takes highest precedence (with permission check)
@@ -131,20 +119,6 @@ function DashboardContent() {
       }
       // Only redirect if confirmed ordinary user without operator standing
       if (isMounted && effectiveUser && !isStaff) {
-        setActiveRoleView("user");
-        router.replace("/dashboard");
-        return;
-      }
-      return;
-    }
-
-    if (viewParam === "admin") {
-      if (isSystemAdmin || !effectiveUser) {
-        setActiveRoleView("admin");
-        localStorage.setItem("tripzyy_active_role_view", "admin");
-        return;
-      }
-      if (isMounted && effectiveUser && !isSystemAdmin) {
         setActiveRoleView("user");
         router.replace("/dashboard");
         return;
@@ -165,26 +139,13 @@ function DashboardContent() {
       return;
     }
 
-    if (pendingRole === "admin") {
-      setActiveRoleView("admin");
-      localStorage.setItem("tripzyy_active_role_view", "admin");
-      return;
-    }
-
     if (savedActiveView === "operator" && (isStaff || !effectiveUser)) {
       setActiveRoleView("operator");
       return;
     }
 
-    if (savedActiveView === "admin" && (isSystemAdmin || !effectiveUser)) {
-      setActiveRoleView("admin");
-      return;
-    }
-
     // 3. Fallback from effective user role
-    if (effectiveUser?.role === "admin" || isAdmin) {
-      setActiveRoleView("admin");
-    } else if (
+    if (
       effectiveUser?.role === "operator" ||
       effectiveUser?.role === "coordinator" ||
       effectiveUser?.operator_role ||
@@ -195,7 +156,7 @@ function DashboardContent() {
     } else {
       setActiveRoleView("user");
     }
-  }, [viewParam, isMounted, isAdmin, isOperator, isCoordinator, user, router]);
+  }, [viewParam, isMounted, isOperator, isCoordinator, user, router]);
 
   // Explorer Data State
   const [searchQuery, setSearchQuery] = useState("");
@@ -210,10 +171,6 @@ function DashboardContent() {
   const [assistThreads, setAssistThreads] = useState<AssistThread[]>([]);
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
-
-  // Admin Data State
-  const [adminStats, setAdminStats] = useState<AdminDashboard | null>(null);
-  const [adminUsers, setAdminUsers] = useState<User[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -281,21 +238,6 @@ function DashboardContent() {
           disruptionsRes.value.success
         ) {
           setDisruptions(unwrapItems<Disruption>(disruptionsRes.value.data));
-        }
-      } else if (activeRoleView === "admin") {
-        const [adminDashRes, adminUsersRes] = await Promise.allSettled([
-          adminService.getDashboard(),
-          adminService.getUsers({ limit: 6 }),
-        ]);
-
-        if (adminDashRes.status === "fulfilled" && adminDashRes.value.success) {
-          setAdminStats(adminDashRes.value.data);
-        }
-        if (
-          adminUsersRes.status === "fulfilled" &&
-          adminUsersRes.value.success
-        ) {
-          setAdminUsers(unwrapItems<User>(adminUsersRes.value.data));
         }
       }
     } catch (err) {
@@ -938,162 +880,6 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════════════
-          PERSPECTIVE 4: STATION ADMINISTRATOR CONTROL CENTER
-         ════════════════════════════════════════════════════════════════════════ */}
-      {activeRoleView === "admin" && (
-        <div className="flex flex-col gap-8">
-          <div className="relative rounded-3xl border-[4px] border-[#171313] bg-[#F1F5F9] p-6 sm:p-8 md:p-10 shadow-[6px_6px_0px_#171313] overflow-hidden">
-            <div className="flex flex-col lg:flex-row items-center justify-between gap-6 relative z-10">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 bg-[#171313] text-white border-2 border-[#171313] rounded-md font-display font-black text-[11px] uppercase shadow-[2px_2px_0px_#E51919] tracking-wider">
-                    STATION COMMAND CENTER
-                  </span>
-                  <span className="text-xs font-bold text-neutral-700">
-                    Platform Administrator • {user?.first_name || "Admin"}
-                  </span>
-                </div>
-                <h1 className="font-display font-black text-3xl sm:text-4xl text-[#171313] tracking-tight mb-2">
-                  System Administration Gateway
-                </h1>
-                <p className="text-xs sm:text-sm font-medium text-neutral-700 max-w-xl">
-                  Platform oversight: audit user registrations, manage destination inventory, inspect PostgreSQL telemetry, and review security metrics.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!isAdmin) {
-                    await switchToAdminUser();
-                  }
-                  router.push("/admin");
-                }}
-              >
-                <NeoButton
-                  variant="primary"
-                  size="lg"
-                  rightIcon={<ArrowRight className="w-5 h-5" />}
-                  className="shadow-[4px_4px_0px_#171313] cursor-pointer"
-                >
-                  Enter Admin Console
-                </NeoButton>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <StatCard
-              label="Platform Users"
-              value={adminStats?.users?.total || adminUsers.length || 24}
-              icon={<Users className="w-5 h-5 text-[#2563EB]" />}
-              color="white"
-            />
-            <StatCard
-              label="Itineraries & Trips"
-              value={adminStats?.trips?.total || trips.length || 18}
-              icon={<Compass className="w-5 h-5 text-[#E51919]" />}
-              color="white"
-            />
-            <StatCard
-              label="Catalog Destinations"
-              value={adminStats?.content?.destinations || destinations.length || 12}
-              icon={<MapPin className="w-5 h-5 text-[#15803D]" />}
-              color="white"
-            />
-            <StatCard
-              label="System Gateway"
-              value="ACTIVE"
-              icon={<CheckCircle2 className="w-5 h-5 text-[#15803D]" />}
-              color="white"
-            />
-          </div>
-
-          <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-[#171313]" />
-                <h3 className="font-display font-black text-lg text-[#171313]">
-                  Platform User Audit Roster
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!isAdmin) {
-                    await switchToAdminUser();
-                  }
-                  router.push("/admin");
-                }}
-              >
-                <NeoButton variant="cream" size="sm" className="cursor-pointer">
-                  Full User Directory →
-                </NeoButton>
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {(adminUsers.length > 0
-                ? adminUsers.slice(0, 5)
-                : [
-                    {
-                      id: "1",
-                      first_name: "Rahul",
-                      last_name: "Mehta",
-                      email: "rahul@example.com",
-                      role: "user",
-                      status: "active",
-                    },
-                    {
-                      id: "2",
-                      first_name: "Meera",
-                      last_name: "Iyer",
-                      email: "coordinator@tripzyy.com",
-                      role: "coordinator",
-                      status: "active",
-                    },
-                    {
-                      id: "3",
-                      first_name: "Kabir",
-                      last_name: "Rao",
-                      email: "operator@tripzyy.com",
-                      role: "operator",
-                      status: "active",
-                    },
-                  ]
-              ).map((u: any) => (
-                <div
-                  key={u.id}
-                  className="p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-white border-2 border-[#171313] flex items-center justify-center font-bold text-xs text-[#171313]">
-                      {u.first_name?.[0]}
-                    </div>
-                    <div>
-                      <span className="font-display font-black text-xs text-[#171313] block">
-                        {u.first_name} {u.last_name}
-                      </span>
-                      <span className="text-[11px] text-neutral-500 font-medium">
-                        {u.email}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-[#171313] text-white font-extrabold text-[9px] uppercase rounded">
-                      {u.role}
-                    </span>
-                    <span className="px-2 py-0.5 bg-[#15803D] text-white font-extrabold text-[9px] uppercase rounded">
-                      {u.status || "active"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </NeoCard>
-        </div>
-      )}
 
       {/* Bill Split Modal */}
       <SplitBillModal

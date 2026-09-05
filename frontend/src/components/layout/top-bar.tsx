@@ -25,7 +25,7 @@ import type { User, TripzyyNotification } from "@/types";
 export const TopBar: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname() || "";
-  const { user, isAdmin } = useAuthUser();
+  const { user } = useAuthUser();
   const { showToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,15 +91,7 @@ export const TopBar: React.FC = () => {
             access token. This used to be a button that flipped it in
             localStorage, which was a one-click self-promotion to admin. */}
         {/* Dynamic Role Badge */}
-        {isAdmin ? (
-          <span
-            title="Signed in as Station Administrator"
-            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#171313] text-white"
-          >
-            <Shield className="w-3.5 h-3.5 text-[#E51919]" />
-            <span>Admin</span>
-          </span>
-        ) : user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
+        {user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
           <span
             title="Signed in as Tour Operator"
             className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border-[2.5px] border-[#171313] text-xs font-display font-extrabold shadow-[2px_2px_0px_#171313] bg-[#D97706] text-white"
@@ -126,18 +118,7 @@ export const TopBar: React.FC = () => {
         )}
 
         {/* Quick Action Button based on Role */}
-        {isAdmin ? (
-          <Link href="/admin">
-            <NeoButton
-              variant="primary"
-              size="sm"
-              leftIcon={<Shield className="w-4 h-4" />}
-              className="hidden sm:inline-flex"
-            >
-              Admin Console
-            </NeoButton>
-          </Link>
-        ) : user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
+        {user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager" ? (
           <Link href="/operator">
             <NeoButton
               variant="primary"

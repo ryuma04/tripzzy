@@ -88,36 +88,6 @@ const tourAndTravelNavItems: NavItem[] = [
   },
 ];
 
-// 4. Station Administrator Navigation
-const adminNavItems: NavItem[] = [
-  {
-    label: "Station Command",
-    href: "/admin",
-    icon: <ShieldAlert className="w-5 h-5" />,
-    badge: "ROOT",
-    badgeColor: "bg-[#171313] text-white",
-  },
-  {
-    label: "User Directory",
-    href: "/admin",
-    icon: <Users className="w-5 h-5" />,
-  },
-  {
-    label: "Destination Catalog",
-    href: "/admin",
-    icon: <MapPin className="w-5 h-5" />,
-  },
-  {
-    label: "System Telemetry",
-    href: "/admin",
-    icon: <Activity className="w-5 h-5" />,
-  },
-  {
-    label: "Explorer Preview",
-    href: "/dashboard",
-    icon: <Compass className="w-5 h-5" />,
-  },
-];
 
 const secondaryNavItems: NavItem[] = [
   {
@@ -156,7 +126,6 @@ export const Sidebar: React.FC = () => {
     if (href === "/trips/new" && pathname === "/trips/new") return true;
     if (
       href !== "/dashboard" &&
-      href !== "/admin" &&
       href !== "/operator" &&
       href !== "/trips" &&
       pathname.startsWith(href)
@@ -204,8 +173,6 @@ export const Sidebar: React.FC = () => {
         setActiveRoleView(pendingRole);
       } else if (effective?.role === "operator" || effective?.operator_role) {
         setActiveRoleView("operator");
-      } else if (effective?.role === "admin") {
-        setActiveRoleView("admin");
       } else if (effective?.role) {
         setActiveRoleView(effective.role);
       }
@@ -217,72 +184,40 @@ export const Sidebar: React.FC = () => {
   const pendingRole = typeof window !== "undefined" ? localStorage.getItem("tripzyy_pending_role") : null;
 
   const isOperatorStaffMember = Boolean(
-    isAdmin ||
     isOperator ||
     isCoordinator ||
     isOperatorStaff ||
     effectiveUser?.role === "operator" ||
     effectiveUser?.role === "coordinator" ||
-    effectiveUser?.role === "admin" ||
     effectiveUser?.operator_role ||
     pendingRole === "operator" ||
     pendingRole === "coordinator"
   );
 
-  const isStationAdmin = Boolean(
-    (isAdmin || effectiveUser?.role === "admin") &&
-    (pathname.startsWith("/admin") || activeRoleView === "admin") &&
-    activeRoleView !== "operator" &&
-    activeRoleView !== "user"
-  );
-
   const isTourAndTravel = Boolean(
-    !isStationAdmin &&
     isOperatorStaffMember &&
     (activeRoleView === "operator" ||
       activeRoleView === "coordinator" ||
-      pathname.startsWith("/operator")) &&
-    activeRoleView !== "admin"
+      pathname.startsWith("/operator"))
   );
 
-  const currentNavItems = isStationAdmin
-    ? adminNavItems
-    : isTourAndTravel
+  const currentNavItems = isTourAndTravel
     ? tourAndTravelNavItems
-    : isOperatorStaffMember
-    ? [
-        ...explorerNavItems,
-        {
-          label: "Tour & Travel",
-          href: "/dashboard?view=operator",
-          icon: <Building2 className="w-5 h-5" />,
-          badge: "OPS",
-          badgeColor: "bg-[#D97706] text-white",
-        },
-      ]
     : explorerNavItems;
 
-  const roleLabel = isStationAdmin
-    ? "Station Admin"
-    : isTourAndTravel
+  const roleLabel = isTourAndTravel
     ? "Tour & Travel Mission"
     : "Explorer Station";
 
-  const roleBadge = isStationAdmin
-    ? "ADMIN"
-    : isTourAndTravel
+  const roleBadge = isTourAndTravel
     ? "TOUR & TRAVEL"
     : "EXPLORER";
 
-  const roleBadgeColor = isStationAdmin
-    ? "bg-[#171313]"
-    : isTourAndTravel
+  const roleBadgeColor = isTourAndTravel
     ? "bg-[#D97706]"
     : "bg-[#15803D]";
 
-  const homeRedirect = isStationAdmin
-    ? "/admin"
-    : isTourAndTravel
+  const homeRedirect = isTourAndTravel
     ? "/dashboard?view=operator"
     : "/dashboard";
 

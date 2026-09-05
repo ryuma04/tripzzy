@@ -16,7 +16,7 @@ import { NeoCard } from "@/components/ui/neo-card";
 import { SignIn, useUser, useAuth, useClerk } from "@clerk/nextjs";
 import { API_BASE_URL } from "@/lib/api";
 
-type OnboardingRole = "user" | "operator" | "admin";
+type OnboardingRole = "user" | "operator";
 
 const ROLE_CONFIGS: Record<
   OnboardingRole,
@@ -46,15 +46,6 @@ const ROLE_CONFIGS: Record<
     icon: Building2,
     bannerNote:
       "Tour & Travel Command Station: Unified portal for tour operations, fleet logistics, passenger rosters & client support.",
-  },
-  admin: {
-    title: "Station Admin",
-    badge: "ADMIN",
-    subtitle: "Platform governance & system control",
-    color: "#171313",
-    icon: Shield,
-    bannerNote:
-      "Admin Station Gateway: System telemetry, user audits & catalog control.",
   },
 };
 
@@ -177,8 +168,6 @@ function LoginContent() {
                 res.data.user.operator_role
               ) {
                 localStorage.setItem("tripzyy_active_role_view", "operator");
-              } else if (res.data.user.role === "admin") {
-                localStorage.setItem("tripzyy_active_role_view", "admin");
               } else {
                 localStorage.setItem("tripzyy_active_role_view", "user");
               }
@@ -259,12 +248,12 @@ function LoginContent() {
         </div>
       )}
 
-      {/* ─── 3 User Types Selector Tabs ─── */}
+      {/* ─── 2 User Types Selector Tabs ─── */}
       <div className="mb-5">
         <label className="font-display font-extrabold text-[11px] uppercase tracking-wider text-[#171313] block mb-2 px-1">
-          Select Target Workspace (3 Roles Available)
+          Select Target Workspace (2 Roles Available)
         </label>
-        <div className="grid grid-cols-3 gap-2.5 p-2 bg-[#FAF7F2] border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313]">
+        <div className="grid grid-cols-2 gap-2.5 p-2 bg-[#FAF7F2] border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313]">
           {(Object.keys(ROLE_CONFIGS) as OnboardingRole[]).map((r) => {
             const config = ROLE_CONFIGS[r];
             const RoleIcon = config.icon;

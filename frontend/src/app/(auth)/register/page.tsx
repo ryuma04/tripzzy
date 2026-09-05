@@ -12,7 +12,7 @@ import {
 import { NeoCard } from "@/components/ui/neo-card";
 import { SignUp } from "@clerk/nextjs";
 
-type OnboardingRole = "user" | "operator" | "admin";
+type OnboardingRole = "user" | "operator";
 
 const ROLE_CONFIGS: Record<
   OnboardingRole,
@@ -47,17 +47,6 @@ const ROLE_CONFIGS: Record<
     icon: Building2,
     bannerNote:
       "Tour & Travel Command Station: Unified agency operations, departures, passenger rosters & client support.",
-  },
-  admin: {
-    title: "Station Admin",
-    badge: "ADMIN",
-    subtitle: "System governance & catalog control",
-    description:
-      "Platform command center for user audits, destination catalog curation, and infrastructure health.",
-    color: "#171313",
-    icon: Shield,
-    bannerNote:
-      "Admin Station Gateway: System command center for audits, destination catalog & telemetry.",
   },
 };
 
@@ -108,18 +97,18 @@ function RegisterContent() {
         </p>
       </div>
 
-      {/* ─── 3 User Types Selector Tabs ─── */}
+      {/* ─── 2 User Types Selector Tabs ─── */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-2 px-1">
           <label className="font-display font-extrabold text-[11px] uppercase tracking-wider text-[#171313]">
-            Select Your User Type (3 Roles Available)
+            Select Your User Type (2 Roles Available)
           </label>
           <span className="text-[10px] font-bold text-neutral-500">
             Step 1 of 2
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5 p-2 bg-[#FAF7F2] border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313]">
+        <div className="grid grid-cols-2 gap-2.5 p-2 bg-[#FAF7F2] border-[3px] border-[#171313] rounded-2xl shadow-[3px_3px_0px_#171313]">
           {(Object.keys(ROLE_CONFIGS) as OnboardingRole[]).map((r) => {
             const config = ROLE_CONFIGS[r];
             const RoleIcon = config.icon;

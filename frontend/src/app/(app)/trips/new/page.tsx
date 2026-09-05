@@ -1278,7 +1278,7 @@ export default function CreateTripPage() {
                   .map((act) => {
                     const isSelected = selectedActivities.some((a) => a.id === act.id || a.title === act.title);
                     const title = act.title || act.name || "Curated Experience";
-                    const imgUrl = resolvePlaceImageUrl(title, undefined, act.image_url);
+                    const imgUrl = resolvePlaceImageUrl(title, undefined, act.image_url, act.destination_name, act.category);
                     const duration = formatDuration(act.duration_minutes, act.duration_hours);
                     const cost = typeof act.estimated_cost === "number"
                       ? act.estimated_cost
@@ -1299,6 +1299,12 @@ export default function CreateTripPage() {
                             src={imgUrl}
                             alt={title}
                             className="object-cover w-full h-full"
+                            onError={(e) => {
+                              const fallback = "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&auto=format&fit=crop&q=80";
+                              if (e.currentTarget.src !== fallback) {
+                                e.currentTarget.src = fallback;
+                              }
+                            }}
                           />
                         </div>
 

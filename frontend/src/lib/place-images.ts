@@ -103,10 +103,47 @@ export const CURATED_INDIAN_PLACE_IMAGES: Record<string, string> = {
   "kolkata": "https://images.unsplash.com/photo-1558431382-27e303142255?w=1000&auto=format&fit=crop&q=85",
   "victoria memorial": "https://images.unsplash.com/photo-1558431382-27e303142255?w=1000&auto=format&fit=crop&q=85",
   "darjeeling": "https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=1000&auto=format&fit=crop&q=85",
-  "amritsar": "https://images.unsplash.com/photo-1596707328906-81e05a5dc9dc?w=1000&auto=format&fit=crop&q=85",
-  "golden temple": "https://images.unsplash.com/photo-1596707328906-81e05a5dc9dc?w=1000&auto=format&fit=crop&q=85",
+  "amritsar": "https://images.unsplash.com/photo-1588714477688-cf28a50e94f7?w=1000&auto=format&fit=crop&q=85",
+  "golden temple": "https://images.unsplash.com/photo-1588714477688-cf28a50e94f7?w=1000&auto=format&fit=crop&q=85",
   "pune": "https://images.unsplash.com/photo-1570168007204-dfb528c6958f?w=1000&auto=format&fit=crop&q=85",
   "shillong": "https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=1000&auto=format&fit=crop&q=85",
+
+  // Global Landmark & Activity Specific Photography
+  "broadway": "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=1000&auto=format&fit=crop&q=85",
+  "broadway show": "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=1000&auto=format&fit=crop&q=85",
+  "colosseum": "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=1000&auto=format&fit=crop&q=85",
+  "roman forum": "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=1000&auto=format&fit=crop&q=85",
+  "everest": "https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=1000&auto=format&fit=crop&q=85",
+  "ganga aarti": "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=1000&auto=format&fit=crop&q=85",
+  "dashashwamedh": "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=1000&auto=format&fit=crop&q=85",
+  "vatican": "https://images.unsplash.com/photo-1531572753322-ad063cecc140?w=1000&auto=format&fit=crop&q=85",
+  "sistine chapel": "https://images.unsplash.com/photo-1531572753322-ad063cecc140?w=1000&auto=format&fit=crop&q=85",
+  "louvre": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=1000&auto=format&fit=crop&q=85",
+  "eiffel": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=1000&auto=format&fit=crop&q=85",
+  "eiffel tower": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=1000&auto=format&fit=crop&q=85",
+  "burj khalifa": "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=1000&auto=format&fit=crop&q=85",
+  "hot air balloon": "https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?w=1000&auto=format&fit=crop&q=85",
+  "london eye": "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=1000&auto=format&fit=crop&q=85",
+  "british museum": "https://images.unsplash.com/photo-1565008447742-97f6f38c985c?w=1000&auto=format&fit=crop&q=85",
+  "tower of london": "https://images.unsplash.com/photo-1543832923-44667a44c804?w=1000&auto=format&fit=crop&q=85",
+  "statue of liberty": "https://images.unsplash.com/photo-1605130284535-11dd9eedc58a?w=1000&auto=format&fit=crop&q=85",
+  "central park": "https://images.unsplash.com/photo-1538688525198-9b88f6f53126?w=1000&auto=format&fit=crop&q=85",
+  "brooklyn bridge": "https://images.unsplash.com/photo-1518391846015-55a9cc003b25?w=1000&auto=format&fit=crop&q=85",
+  "hagia sophia": "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?w=1000&auto=format&fit=crop&q=85",
+  "blue mosque": "https://images.unsplash.com/photo-1527838832700-5059252407fa?w=1000&auto=format&fit=crop&q=85",
+  "grand palace": "https://images.unsplash.com/photo-1563492065599-3520f775eeed?w=1000&auto=format&fit=crop&q=85",
+  "universal studios": "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=1000&auto=format&fit=crop&q=85",
+  "gardens by the bay": "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=1000&auto=format&fit=crop&q=85",
+  "marina bay sands": "https://images.unsplash.com/photo-1508964942454-1a56651d54ac?w=1000&auto=format&fit=crop&q=85",
+  "tegallalang": "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1000&auto=format&fit=crop&q=85",
+  "mount batur": "https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=1000&auto=format&fit=crop&q=85",
+  "uluwatu": "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1000&auto=format&fit=crop&q=85",
+  "mount fuji": "https://images.unsplash.com/photo-1490806843957-31f4c9a91c65?w=1000&auto=format&fit=crop&q=85",
+  "shibuya": "https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=1000&auto=format&fit=crop&q=85",
+  "scuba": "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1000&auto=format&fit=crop&q=85",
+  "scuba diving": "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1000&auto=format&fit=crop&q=85",
+  "parasailing": "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1000&auto=format&fit=crop&q=85",
+  "houseboat": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=1000&auto=format&fit=crop&q=85",
 };
 
 export const DESTINATION_IMAGES: Record<string, string> = {
@@ -208,12 +245,21 @@ export const DESTINATION_IMAGES: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Varanasi%2C_India%2C_Ghats%2C_Cremation_ceremony_in_progress.jpg/1280px-Varanasi%2C_India%2C_Ghats%2C_Cremation_ceremony_in_progress.jpg",
 };
 
-/**
- * Returns a high-definition real image for any place query, Google Place object, or destination name.
- */
+/** Category-specific curated fallbacks so activities without specific landmark photos don't all look identical. */
+export const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
+  adventure: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1000&auto=format&fit=crop&q=85",
+  culture: "https://images.unsplash.com/photo-1548013146-72479768bada?w=1000&auto=format&fit=crop&q=85",
+  food: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1000&auto=format&fit=crop&q=85",
+  sightseeing: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1000&auto=format&fit=crop&q=85",
+  relaxation: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1000&auto=format&fit=crop&q=85",
+  shopping: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1000&auto=format&fit=crop&q=85",
+  nature: "https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=1000&auto=format&fit=crop&q=85",
+  nightlife: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1000&auto=format&fit=crop&q=85",
+};
+
 /** The generic backdrop used when a place is genuinely unknown. */
 const GENERIC_FALLBACK =
-  "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1000&auto=format&fit=crop&q=85";
+  "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1000&auto=format&fit=crop&q=85";
 
 /** This same placeholder got saved into `destinations.image_url` for several
  *  rows, where it would otherwise outrank a real photo of the place. */
@@ -222,7 +268,9 @@ const GENERIC_PHOTO_ID = "photo-1506744038136";
 export function resolvePlaceImageUrl(
   placeNameOrQuery?: string,
   photos?: { name: string }[],
-  existingImageUrl?: string | null
+  existingImageUrl?: string | null,
+  destinationName?: string | null,
+  category?: string | null
 ): string {
   // 1. A stored image wins -- unless what was stored is the placeholder, in
   //    which case it is not an image of anywhere and must not beat a real one.
@@ -239,18 +287,11 @@ export function resolvePlaceImageUrl(
     return `${API_BASE}/places/photo?name=${encodeURIComponent(photos[0].name)}&max_height=600&max_width=800`;
   }
 
-  // 3. Match against the known places.
-  //
-  // Exact first, then the *longest* matching key -- the old version returned
-  // whichever key happened to be declared first, so a short one could hijack
-  // a more specific place ("marine drive" winning over "marine drive
-  // promenade" purely by insertion order).
+  const tables = [CURATED_INDIAN_PLACE_IMAGES, DESTINATION_IMAGES];
+
+  // 3. Match against the specific landmark or activity query
   if (placeNameOrQuery) {
     const q = placeNameOrQuery.toLowerCase().trim();
-
-    // Destination photos are checked before landmark art: asking for "Agra"
-    // should give Agra, not whichever landmark key matched first.
-    const tables = [DESTINATION_IMAGES, CURATED_INDIAN_PLACE_IMAGES];
 
     for (const table of tables) {
       if (table[q]) return table[q];
@@ -268,7 +309,7 @@ export function resolvePlaceImageUrl(
       if (best) return best;
     }
 
-    // Token matching, longest token first for the same reason.
+    // Token matching
     const tokens = q
       .split(/[\s,–—\-]+/)
       .filter((t) => t.length >= 4)
@@ -280,7 +321,29 @@ export function resolvePlaceImageUrl(
     }
   }
 
-  // 4. Nothing known about this place. A generic travel backdrop is honest
-  //    here in a way a photo of somewhere else would not be.
+  // 4. Match against the destination city name if provided (e.g. "Rome", "New York", "Kathmandu")
+  if (destinationName) {
+    const city = destinationName.toLowerCase().trim();
+    for (const table of tables) {
+      if (table[city]) return table[city];
+    }
+    for (const table of tables) {
+      for (const [key, url] of Object.entries(table)) {
+        if (city.includes(key) || key.includes(city)) {
+          return url;
+        }
+      }
+    }
+  }
+
+  // 5. Match against category (e.g. food, culture, adventure)
+  if (category) {
+    const cat = category.toLowerCase().trim();
+    if (CATEGORY_FALLBACK_IMAGES[cat]) {
+      return CATEGORY_FALLBACK_IMAGES[cat];
+    }
+  }
+
+  // 6. Generic backdrop
   return GENERIC_FALLBACK;
 }

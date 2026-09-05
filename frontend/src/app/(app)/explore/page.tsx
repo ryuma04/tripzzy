@@ -33,7 +33,7 @@ import { destinationService } from "@/services/destinations";
 import { activityService } from "@/services/activities";
 import { tripService } from "@/services/trips";
 import { placesService, PlaceSuggestion, PlaceDetails } from "@/services/places";
-import { resolvePlaceImageUrl } from "@/lib/place-images";
+import { resolvePlaceImageUrl, CATEGORY_FALLBACK_IMAGES } from "@/lib/place-images";
 import type { Destination, Activity, Trip } from "@/types";
 
 function ExploreContent() {
@@ -579,6 +579,12 @@ function ExploreContent() {
                     src={resolvePlaceImageUrl(dest.name, undefined, dest.image_url)}
                     alt={dest.name}
                     className="object-cover w-full h-full"
+                    onError={(e) => {
+                      const fallback = "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&auto=format&fit=crop&q=80";
+                      if (e.currentTarget.src !== fallback) {
+                        e.currentTarget.src = fallback;
+                      }
+                    }}
                   />
                   <span className="absolute top-3 left-3 text-[10px] font-display font-extrabold uppercase px-2.5 py-1 bg-[#FFF4E6] border-2 border-[#171313] rounded-lg shadow-[2px_2px_0px_#171313]">
                     {dest.region || dest.country}
@@ -649,9 +655,24 @@ function ExploreContent() {
                 >
                   <div className="relative w-full sm:w-32 h-32 rounded-xl border-2 border-[#171313] overflow-hidden flex-shrink-0 bg-neutral-100">
                     <img
-                      src={resolvePlaceImageUrl(title, undefined, act.image_url)}
+                      src={resolvePlaceImageUrl(
+                        title,
+                        undefined,
+                        act.image_url,
+                        act.destination_name,
+                        act.category
+                      )}
                       alt={title}
                       className="object-cover w-full h-full"
+                      onError={(e) => {
+                        const cat = (act.category || "").toLowerCase();
+                        const fallback =
+                          CATEGORY_FALLBACK_IMAGES[cat] ||
+                          "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&auto=format&fit=crop&q=80";
+                        if (e.currentTarget.src !== fallback) {
+                          e.currentTarget.src = fallback;
+                        }
+                      }}
                     />
                     <span className="absolute top-2 left-2 text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-white border border-[#171313] rounded">
                       {act.category}

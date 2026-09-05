@@ -31,50 +31,47 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 async def _serialize_user(user: User, db: DbSession) -> dict:
-    data = UserResponse.model_validate(user).model_dump()
+    data = {
+        "id": str(user.id),
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "phone": user.phone,
+        "city": user.city,
+        "country": user.country,
+        "additional_info": user.additional_info,
+        "role": getattr(user.role, "value", str(user.role)).lower(),
+        "status": getattr(user.status, "value", str(user.status)).lower(),
+        "is_email_verified": user.is_email_verified,
+        "avatar_url": user.avatar_url,
+        "operator_role": None,
+        "operator_id": None,
+        "operator_name": None,
+        "created_at": (
+            user.created_at.isoformat()
+            if hasattr(user.created_at, "isoformat")
+            else str(user.created_at)
+        ),
+    }
     membership = await db.scalar(
         select(OperatorMember)
         .where(OperatorMember.user_id == user.id, OperatorMember.is_active.is_(True))
         .limit(1)
     )
-    if not membership:
-        role_str = getattr(user.role, "value", str(user.role)).lower()
-        if role_str in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin"):
-            from app.models.enums import OperatorRole
-            op = await db.scalar(
-                select(Operator).where(Operator.slug == "tripzyy-journeys")
-            )
-            if op:
-                op_role = (
-                    OperatorRole.COORDINATOR
-                    if "coordinator" in role_str
-                    else OperatorRole.OWNER
-                )
-                title = (
-                    "Field Coordinator"
-                    if op_role == OperatorRole.COORDINATOR
-                    else "Operations Lead"
-                )
-                membership = OperatorMember(
-                    operator_id=op.id,
-                    user_id=user.id,
-                    role=op_role,
-                    job_title=title,
-                    is_active=True,
-                )
-                db.add(membership)
-                await db.commit()
-                await db.refresh(membership)
     if membership:
-        data["operator_role"] = membership.role.value
+        data["operator_role"] = (
+            membership.role.value
+            if hasattr(membership.role, "value")
+            else str(membership.role)
+        )
         data["operator_id"] = str(membership.operator_id)
         op = await db.get(Operator, membership.operator_id)
         if op:
             data["operator_name"] = op.name
-        if data["role"] == "user":
-            if membership.role.value in ("owner", "manager"):
+        if data["role"] in ("user", "userrole.user"):
+            if data["operator_role"] in ("owner", "manager"):
                 data["role"] = "operator"
-            elif membership.role.value == "coordinator":
+            elif data["operator_role"] == "coordinator":
                 data["role"] = "coordinator"
     return data
 
@@ -255,142 +252,204 @@ async def clerk_sync(
     """
     import logging
     from app.core.clerk import get_clerk_user_info, verify_clerk_token
+    from app.core.exceptions import ErrorCode
 
     logger = logging.getLogger("tripzyy.clerk_sync")
+    origin = request.headers.get("origin")
 
-    # ── 1. Extract and verify the Clerk session token ──────────────
-    auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
-        raise UnauthorizedError(
-            "Clerk session token required. "
-            "Send Authorization: Bearer <clerk_session_token>"
-        )
-    clerk_token = auth_header[7:].strip()
-    if not clerk_token:
-        raise UnauthorizedError("Empty Clerk session token")
+    try:
+        # ── 1. Extract and verify the Clerk session token ──────────────
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.lower().startswith("bearer "):
+            raise UnauthorizedError(
+                "Clerk session token required. "
+                "Send Authorization: Bearer <clerk_session_token>"
+            )
+        clerk_token = auth_header[7:].strip()
+        if not clerk_token:
+            raise UnauthorizedError("Empty Clerk session token")
 
-    # Verify the JWT signature (raises UnauthorizedError on failure)
-    token_payload = verify_clerk_token(clerk_token)
-    clerk_user_id = token_payload.get("sub")
-    if not clerk_user_id:
-        raise UnauthorizedError("Clerk token missing user identity")
+        # Verify the JWT signature (raises UnauthorizedError on failure)
+        token_payload = verify_clerk_token(clerk_token)
+        clerk_user_id = token_payload.get("sub")
+        if not clerk_user_id:
+            raise UnauthorizedError("Clerk token missing user identity")
 
-    # ── 2. Fetch authoritative user data from Clerk Backend API ────
-    clerk_info = await get_clerk_user_info(clerk_token)
-
-    # Use Clerk-verified email if available; fall back to body only
-    # if the Backend API call returned nothing (CLERK_SECRET_KEY unset).
-    email = (clerk_info.get("email") or payload.email or "").lower().strip()
-    if not email:
-        raise UnauthorizedError("Unable to determine user email")
-
-    first_name = clerk_info.get("first_name") or payload.first_name or "Traveler"
-    last_name = clerk_info.get("last_name") or payload.last_name or ""
-    verified_clerk_id = clerk_info.get("clerk_id") or clerk_user_id
-
-    # Role: prefer explicit payload role if specified as operator/coordinator/admin, then Clerk metadata, default user
-    payload_role_val = getattr(payload.role, "value", str(payload.role)).lower()
-    if payload_role_val in ("operator", "coordinator", "admin"):
-        role_str = payload_role_val
-    else:
-        role_str = clerk_info.get("role") or payload.role
-
-    if isinstance(role_str, str):
-        from app.models.enums import UserRole
+        # ── 2. Fetch authoritative user data from Clerk Backend API ────
         try:
-            role = UserRole(role_str)
-        except ValueError:
-            role = UserRole.USER
-    else:
-        role = role_str if role_str else UserRole.USER
+            clerk_info = await get_clerk_user_info(clerk_token)
+        except Exception as exc:
+            logger.warning("get_clerk_user_info warning: %s", exc)
+            clerk_info = {}
 
-    # ── 3. Upsert the user ────────────────────────────────────────
-    # Try lookup by clerk_id first (most reliable), then by email
-    user = None
-    if verified_clerk_id:
-        user = await db.scalar(
-            select(User).where(User.clerk_id == verified_clerk_id)
-        )
-    if user is None:
-        user = await UserRepository(db).get_by_email(email)
+        # Use Clerk-verified email if available; fall back to body
+        email = (clerk_info.get("email") or payload.email or "").lower().strip()
+        if not email:
+            raise UnauthorizedError("Unable to determine user email")
 
-    if user is None:
-        # Create new user
-        user = User(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            role=role,
-            is_email_verified=True,
-            hashed_password=hash_password(secrets.token_urlsafe(32)),
-            clerk_id=verified_clerk_id,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        logger.info("Created new user %s (clerk=%s)", email, verified_clerk_id)
-    else:
-        # Update existing user
-        updated = False
-        if not user.is_email_verified:
-            user.is_email_verified = True
-            updated = True
-        if verified_clerk_id and user.clerk_id != verified_clerk_id:
-            user.clerk_id = verified_clerk_id
-            updated = True
-        if role and user.role != role:
-            user.role = role
-            updated = True
-        if updated:
-            await db.commit()
-            await db.refresh(user)
-            logger.info("Updated user %s (clerk=%s)", email, verified_clerk_id)
+        first_name = clerk_info.get("first_name") or payload.first_name or "Traveler"
+        last_name = clerk_info.get("last_name") or payload.last_name or ""
+        verified_clerk_id = clerk_info.get("clerk_id") or clerk_user_id
 
-    # ── 4. Auto-enroll operator/coordinator/admin into default operator ─
-    if (role in ("operator", "coordinator", "admin") or
-            str(user.role).lower() in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin")):
-        from app.models.enums import OperatorRole
+        # Role: prefer explicit payload role if specified as operator/coordinator/admin, then Clerk metadata, default user
+        payload_role_val = getattr(payload.role, "value", str(payload.role)).lower()
+        if payload_role_val in ("operator", "coordinator", "admin"):
+            role_str = payload_role_val
+        else:
+            role_str = clerk_info.get("role") or payload.role
 
-        existing_mem = await db.scalar(
-            select(OperatorMember).where(
-                OperatorMember.user_id == user.id,
-                OperatorMember.is_active.is_(True),
+        from app.models.enums import UserRole
+        if isinstance(role_str, str):
+            try:
+                role = UserRole(role_str.lower())
+            except ValueError:
+                role = UserRole.USER
+        else:
+            role = role_str if role_str else UserRole.USER
+
+        # ── 3. Upsert the user ────────────────────────────────────────
+        user = None
+        if verified_clerk_id:
+            user = await db.scalar(
+                select(User).where(User.clerk_id == verified_clerk_id)
             )
-        )
-        if not existing_mem:
-            op = await db.scalar(
-                select(Operator).where(Operator.slug == "tripzyy-journeys")
+        if user is None and email:
+            user = await UserRepository(db).get_by_email(email)
+
+        if user is None:
+            # Create new user
+            user = User(
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                role=role,
+                is_email_verified=True,
+                hashed_password=hash_password(secrets.token_urlsafe(32)),
+                clerk_id=verified_clerk_id,
             )
-            if op:
-                role_val = getattr(user.role, "value", str(user.role)).lower()
-                op_role = (
-                    OperatorRole.COORDINATOR
-                    if role_val == "coordinator" or role == "coordinator"
-                    else OperatorRole.OWNER
-                )
-                title = (
-                    "Field Coordinator"
-                    if op_role == OperatorRole.COORDINATOR
-                    else "Operations Lead"
-                )
-                db.add(
-                    OperatorMember(
-                        operator_id=op.id,
-                        user_id=user.id,
-                        role=op_role,
-                        job_title=title,
-                        is_active=True,
-                    )
-                )
+            db.add(user)
+            try:
                 await db.commit()
+                await db.refresh(user)
+                logger.info("Created new user %s (clerk=%s)", email, verified_clerk_id)
+            except Exception as exc:
+                logger.warning("Conflict creating user %s: %s; retrieving existing", email, exc)
+                await db.rollback()
+                user = await UserRepository(db).get_by_email(email)
+                if not user and verified_clerk_id:
+                    user = await db.scalar(select(User).where(User.clerk_id == verified_clerk_id))
+        else:
+            # Update existing user
+            updated = False
+            if not user.is_email_verified:
+                user.is_email_verified = True
+                updated = True
+            if verified_clerk_id and user.clerk_id != verified_clerk_id:
+                user.clerk_id = verified_clerk_id
+                updated = True
+            if role and role != UserRole.USER and user.role != role:
+                user.role = role
+                updated = True
+            if updated:
+                try:
+                    await db.commit()
+                    await db.refresh(user)
+                    logger.info("Updated user %s (clerk=%s)", email, verified_clerk_id)
+                except Exception as exc:
+                    logger.warning("Conflict updating user %s: %s", email, exc)
+                    await db.rollback()
+                    user = await db.get(User, user.id)
 
-    # ── 5. Issue Tripzyy JWT tokens ────────────────────────────────
-    service = AuthService(db)
-    tokens = service.issue_tokens(user)
-    tokens.pop("_expires_at", None)
-    serialized = await _serialize_user(user, db)
-    return responses.success(
-        {**tokens, "user": serialized},
-        "User synchronized successfully",
-    )
+        # ── 4. Auto-enroll operator/coordinator/admin into default operator ─
+        user_role_str = getattr(user.role, "value", str(user.role)).lower()
+        is_staff = (
+            payload_role_val in ("operator", "coordinator", "admin") or
+            user_role_str in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin")
+        )
+        if is_staff:
+            from app.models.enums import OperatorRole
+
+            existing_mem = await db.scalar(
+                select(OperatorMember).where(
+                    OperatorMember.user_id == user.id,
+                ).limit(1)
+            )
+            if existing_mem:
+                if not existing_mem.is_active:
+                    existing_mem.is_active = True
+                    try:
+                        await db.commit()
+                    except Exception as exc:
+                        logger.warning("Could not reactivate member: %s", exc)
+                        await db.rollback()
+            else:
+                op = await db.scalar(
+                    select(Operator).where(Operator.slug == "tripzyy-journeys")
+                )
+                if op:
+                    op_role = (
+                        OperatorRole.COORDINATOR
+                        if "coordinator" in user_role_str or payload_role_val == "coordinator"
+                        else OperatorRole.OWNER
+                    )
+                    title = (
+                        "Field Coordinator"
+                        if op_role == OperatorRole.COORDINATOR
+                        else "Operations Lead"
+                    )
+                    try:
+                        db.add(
+                            OperatorMember(
+                                operator_id=op.id,
+                                user_id=user.id,
+                                role=op_role,
+                                job_title=title,
+                                is_active=True,
+                            )
+                        )
+                        await db.commit()
+                    except Exception as exc:
+                        logger.warning("OperatorMember creation skipped: %s", exc)
+                        await db.rollback()
+
+        # ── 5. Issue Tripzyy JWT tokens ────────────────────────────────
+        await db.refresh(user)
+        service = AuthService(db)
+        tokens = service.issue_tokens(user)
+        tokens.pop("_expires_at", None)
+        serialized = await _serialize_user(user, db)
+        resp = responses.success(
+            {**tokens, "user": serialized},
+            "User synchronized successfully",
+        )
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        return resp
+
+    except UnauthorizedError as exc:
+        await db.rollback()
+        resp = responses.error(
+            exc.message,
+            code=exc.code,
+            status_code=exc.status_code,
+            details=exc.details,
+        )
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        return resp
+    except Exception as exc:
+        logger.exception("Unhandled error during clerk_sync: %s", exc)
+        await db.rollback()
+        resp = responses.error(
+            f"Authentication sync error: {exc}",
+            code=ErrorCode.INTERNAL_ERROR,
+            status_code=500,
+            details={"error": str(exc)} if settings.DEBUG else {},
+        )
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        return resp
 

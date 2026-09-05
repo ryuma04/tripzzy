@@ -59,52 +59,55 @@ def _register_exception_handlers(app: FastAPI) -> None:
     and the frontend would need two parsers.
     """
 
+    def _with_cors(request: Request, response: responses.JSONResponse) -> responses.JSONResponse:
+        origin = request.headers.get("origin")
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+
     @app.exception_handler(AppError)
-    async def _app_error(_: Request, exc: AppError):
-        return responses.error(
+    async def _app_error(request: Request, exc: AppError):
+        resp = responses.error(
             exc.message,
             code=exc.code,
             status_code=exc.status_code,
             details=exc.details,
         )
+        return _with_cors(request, resp)
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(_: Request, exc: RequestValidationError):
-        # Flatten Pydantic's errors into {"field.path": "message"} so the
-        # frontend can drop each message next to the right input.
+    async def _validation_error(request: Request, exc: RequestValidationError):
         fields: dict[str, str] = {}
         for err in exc.errors():
             loc = [str(p) for p in err["loc"] if p not in ("body", "query", "path")]
             fields[".".join(loc) or "body"] = err["msg"]
-        return responses.error(
+        resp = responses.error(
             "Validation failed",
             code=ErrorCode.VALIDATION_ERROR,
             status_code=422,
             details={"fields": fields},
         )
+        return _with_cors(request, resp)
 
     @app.exception_handler(PydanticValidationError)
-    async def _pydantic_error(_: Request, exc: PydanticValidationError):
-        """Catch validation raised inside a ``Depends()`` model.
-
-        FastAPI only wraps body/query parsing into RequestValidationError.
-        A model used as a dependency -- the search-filter models, for
-        instance -- raises the raw pydantic error instead, which would
-        otherwise surface as a 500 rather than a 422.
-        """
+    async def _pydantic_error(request: Request, exc: PydanticValidationError):
         fields: dict[str, str] = {}
         for err in exc.errors():
             loc = [str(p) for p in err["loc"] if p not in ("body", "query", "path")]
             fields[".".join(loc) or "body"] = err["msg"]
-        return responses.error(
+        resp = responses.error(
             "Validation failed",
             code=ErrorCode.VALIDATION_ERROR,
             status_code=422,
             details={"fields": fields},
         )
+        return _with_cors(request, resp)
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(_: Request, exc: StarletteHTTPException):
+    async def _http_error(request: Request, exc: StarletteHTTPException):
         code = {
             401: ErrorCode.UNAUTHORIZED,
             403: ErrorCode.FORBIDDEN,
@@ -112,20 +115,21 @@ def _register_exception_handlers(app: FastAPI) -> None:
             409: ErrorCode.CONFLICT,
             429: ErrorCode.RATE_LIMITED,
         }.get(exc.status_code, ErrorCode.INTERNAL_ERROR)
-        return responses.error(
+        resp = responses.error(
             str(exc.detail), code=code, status_code=exc.status_code
         )
+        return _with_cors(request, resp)
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception):
-        # Log the real cause, but never expose internals to the client.
+    async def _unhandled(request: Request, exc: Exception):
         logger.exception("Unhandled error: %s", exc)
-        return responses.error(
+        resp = responses.error(
             "An unexpected error occurred",
             code=ErrorCode.INTERNAL_ERROR,
             status_code=500,
             details={"error": str(exc)} if settings.DEBUG else {},
         )
+        return _with_cors(request, resp)
 
 
 def _register_routers(app: FastAPI) -> None:

@@ -86,11 +86,6 @@ const tourAndTravelNavItems: NavItem[] = [
     href: "/operator",
     icon: <Truck className="w-5 h-5" />,
   },
-  {
-    label: "Explorer Desk",
-    href: "/dashboard?view=user",
-    icon: <Compass className="w-5 h-5" />,
-  },
 ];
 
 // 4. Station Administrator Navigation

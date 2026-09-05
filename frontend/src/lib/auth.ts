@@ -310,3 +310,53 @@ export async function switchToAdminUser(): Promise<{ success: boolean; message: 
 
   return { success: true, message: "Switched to Station Administrator" };
 }
+
+export async function switchToOperatorUser(): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await login("operator@tripzyy.com", "Operate@123", "operator");
+    if (res.success && res.data) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tripzyy_active_role_view", "operator");
+      }
+      return { success: true, message: "Logged in as Tour & Travel Lead" };
+    }
+  } catch {
+    // API call failed, proceed with fallback
+  }
+
+  const current = getStoredUser();
+  const operatorUser: User = current
+    ? {
+        ...current,
+        role: "operator",
+        operator_role: "owner",
+        operator_name: "Tripzyy Journeys",
+      }
+    : {
+        id: "usr_operator",
+        first_name: "Kabir",
+        last_name: "Rao",
+        email: "operator@tripzyy.com",
+        phone: "+91 98765 43213",
+        city: "Mumbai",
+        country: "India",
+        bio: "Tripzyy Journeys Operations Director",
+        role: "operator",
+        operator_role: "owner",
+        operator_name: "Tripzyy Journeys",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem("tripzyy_user", JSON.stringify(operatorUser));
+    localStorage.setItem("tripzyy_active_role_view", "operator");
+    if (!localStorage.getItem("tripzyy_token")) {
+      localStorage.setItem("tripzyy_token", "demo_operator_jwt_token");
+    }
+    dispatchAuthChange();
+  }
+
+  return { success: true, message: "Switched to Tour & Travel Operations" };
+}
+

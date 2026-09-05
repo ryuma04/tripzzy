@@ -104,7 +104,8 @@ async def require_operator_member(
         .limit(1)
     )
     if membership is None:
-        if current_user.role in ("operator", "coordinator", "admin"):
+        role_str = getattr(current_user.role, "value", str(current_user.role)).lower()
+        if role_str in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin"):
             from app.models import Operator
             from app.models.enums import OperatorRole
 
@@ -114,12 +115,12 @@ async def require_operator_member(
             if op:
                 role = (
                     OperatorRole.COORDINATOR
-                    if current_user.role == "coordinator"
+                    if "coordinator" in role_str
                     else OperatorRole.OWNER
                 )
                 title = (
                     "Field Coordinator"
-                    if current_user.role == "coordinator"
+                    if role == OperatorRole.COORDINATOR
                     else "Operations Lead"
                 )
                 membership = OperatorMember(

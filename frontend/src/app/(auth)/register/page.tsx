@@ -168,6 +168,7 @@ function RegisterContent() {
       {/* Clerk Sign Up Component */}
       <div className="flex justify-center my-2">
         <SignUp
+          key={role}
           routing="hash"
           signInUrl="/login"
           fallbackRedirectUrl={`/dashboard?view=${role}`}

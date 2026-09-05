@@ -47,7 +47,11 @@ export function ClerkSync() {
         const parsed = JSON.parse(storedUserStr) as User;
         if (parsed.email?.toLowerCase() === email.toLowerCase()) {
           // If a new role was chosen that doesn't match current stored role, force re-sync
-          if (pendingRole && parsed.role !== pendingRole) {
+          if (
+            pendingRole &&
+            (parsed.role !== pendingRole ||
+              (pendingRole === "operator" && !parsed.operator_role))
+          ) {
             alreadySynced = false;
           } else {
             alreadySynced = true;
@@ -99,6 +103,15 @@ export function ClerkSync() {
           localStorage.setItem("tripzyy_token", res.data.access_token);
           if (res.data.user) {
             localStorage.setItem("tripzyy_user", JSON.stringify(res.data.user));
+            if (
+              res.data.user.role === "operator" ||
+              res.data.user.role === "coordinator" ||
+              res.data.user.operator_role
+            ) {
+              localStorage.setItem("tripzyy_active_role_view", "operator");
+            } else if (res.data.user.role === "admin") {
+              localStorage.setItem("tripzyy_active_role_view", "admin");
+            }
           }
           if (typeof window !== "undefined") {
             localStorage.removeItem("tripzyy_pending_role");

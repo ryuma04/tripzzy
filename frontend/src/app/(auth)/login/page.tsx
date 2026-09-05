@@ -168,6 +168,7 @@ function LoginContent() {
       {/* Clerk Sign In Component */}
       <div className="flex justify-center my-2">
         <SignIn
+          key={role}
           routing="hash"
           signUpUrl="/register"
           fallbackRedirectUrl={`/dashboard?view=${role}`}

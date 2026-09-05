@@ -59,12 +59,33 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams?.get("view") as DashboardRoleView | null;
-  const { user, isAdmin, isOperator, isCoordinator, updateUser } =
+  const { user, isAdmin, isOperator, isCoordinator, isMounted, updateUser } =
     useAuthUser();
 
   // Active Role Perspective (auto-detected from logged in user, URL, or toggled)
-  const [activeRoleView, setActiveRoleView] =
-    useState<DashboardRoleView>("user");
+  const [activeRoleView, setActiveRoleView] = useState<DashboardRoleView>(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlView = urlParams.get("view") as DashboardRoleView | null;
+      if (urlView === "operator" || urlView === "user" || urlView === "admin") {
+        return urlView;
+      }
+      const pending = localStorage.getItem("tripzyy_pending_role") as DashboardRoleView | null;
+      if (pending === "operator" || pending === "admin" || pending === "user") {
+        return pending;
+      }
+      const saved = localStorage.getItem("tripzyy_active_role_view") as DashboardRoleView | null;
+      if (saved === "operator" || saved === "admin" || saved === "user") {
+        return saved;
+      }
+      const stored = getStoredUser();
+      if (stored?.role === "operator" || stored?.role === "coordinator" || stored?.operator_role) {
+        return "operator";
+      }
+      if (stored?.role === "admin") return "admin";
+    }
+    return "user";
+  });
 
   // Filter inside Tour & Travel dashboard (combined features)
   const [tourTravelFilter, setTourTravelFilter] = useState<
@@ -72,83 +93,109 @@ function DashboardContent() {
   >("all");
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const storedUser = getStoredUser();
+    const effectiveUser = user || storedUser;
+    const pendingRole = localStorage.getItem("tripzyy_pending_role");
+    const savedActiveView = localStorage.getItem("tripzyy_active_role_view");
+
     const isStaff = Boolean(
       isAdmin ||
       isOperator ||
       isCoordinator ||
-      user?.role === "operator" ||
-      user?.role === "coordinator" ||
-      user?.role === "admin"
+      effectiveUser?.role === "operator" ||
+      effectiveUser?.role === "coordinator" ||
+      effectiveUser?.role === "admin" ||
+      effectiveUser?.operator_role === "owner" ||
+      effectiveUser?.operator_role === "manager" ||
+      effectiveUser?.operator_role === "coordinator" ||
+      pendingRole === "operator" ||
+      pendingRole === "coordinator" ||
+      savedActiveView === "operator"
+    );
+
+    const isSystemAdmin = Boolean(
+      isAdmin ||
+      effectiveUser?.role === "admin" ||
+      pendingRole === "admin" ||
+      savedActiveView === "admin"
     );
 
     // 1. URL search param takes highest precedence (with permission check)
-    if (
-      viewParam &&
-      (viewParam === "user" || viewParam === "operator" || viewParam === "admin")
-    ) {
-      if (viewParam === "operator" && !isStaff) {
+    if (viewParam === "operator") {
+      if (isStaff || pendingRole === "operator" || !effectiveUser) {
+        setActiveRoleView("operator");
+        localStorage.setItem("tripzyy_active_role_view", "operator");
+        return;
+      }
+      // Only redirect if confirmed ordinary user without operator standing
+      if (isMounted && effectiveUser && !isStaff) {
         setActiveRoleView("user");
         router.replace("/dashboard");
         return;
-      }
-      if (viewParam === "admin" && !isAdmin && user?.role !== "admin") {
-        setActiveRoleView("user");
-        router.replace("/dashboard");
-        return;
-      }
-      setActiveRoleView(viewParam);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("tripzyy_active_role_view", viewParam);
       }
       return;
     }
 
-    // 2. Pending role from login/register or saved active view
-    if (typeof window !== "undefined") {
-      const pendingRole = localStorage.getItem("tripzyy_pending_role");
-      if ((pendingRole === "operator" || pendingRole === "coordinator") && isStaff) {
-        setActiveRoleView("operator");
-        localStorage.setItem("tripzyy_active_role_view", "operator");
-        localStorage.removeItem("tripzyy_pending_role");
-        return;
-      }
-      if (pendingRole === "admin" && (isAdmin || user?.role === "admin")) {
+    if (viewParam === "admin") {
+      if (isSystemAdmin || !effectiveUser) {
         setActiveRoleView("admin");
         localStorage.setItem("tripzyy_active_role_view", "admin");
-        localStorage.removeItem("tripzyy_pending_role");
         return;
       }
-
-      const savedView = localStorage.getItem(
-        "tripzyy_active_role_view"
-      ) as DashboardRoleView | null;
-      if (savedView === "operator" && !isStaff) {
-        localStorage.removeItem("tripzyy_active_role_view");
-      } else if (savedView === "admin" && !isAdmin && user?.role !== "admin") {
-        localStorage.removeItem("tripzyy_active_role_view");
-      } else if (
-        savedView &&
-        (savedView === "user" || savedView === "operator" || savedView === "admin")
-      ) {
-        setActiveRoleView(savedView);
+      if (isMounted && effectiveUser && !isSystemAdmin) {
+        setActiveRoleView("user");
+        router.replace("/dashboard");
         return;
       }
+      return;
     }
 
-    // 3. Fallback to user role
-    if (isAdmin || user?.role === "admin") {
+    if (viewParam === "user") {
+      setActiveRoleView("user");
+      localStorage.setItem("tripzyy_active_role_view", "user");
+      return;
+    }
+
+    // 2. Pending role from login/register or saved active view
+    if (pendingRole === "operator" || pendingRole === "coordinator") {
+      setActiveRoleView("operator");
+      localStorage.setItem("tripzyy_active_role_view", "operator");
+      return;
+    }
+
+    if (pendingRole === "admin") {
+      setActiveRoleView("admin");
+      localStorage.setItem("tripzyy_active_role_view", "admin");
+      return;
+    }
+
+    if (savedActiveView === "operator" && (isStaff || !effectiveUser)) {
+      setActiveRoleView("operator");
+      return;
+    }
+
+    if (savedActiveView === "admin" && (isSystemAdmin || !effectiveUser)) {
+      setActiveRoleView("admin");
+      return;
+    }
+
+    // 3. Fallback from effective user role
+    if (effectiveUser?.role === "admin" || isAdmin) {
       setActiveRoleView("admin");
     } else if (
+      effectiveUser?.role === "operator" ||
+      effectiveUser?.role === "coordinator" ||
+      effectiveUser?.operator_role ||
       isOperator ||
-      isCoordinator ||
-      user?.role === "operator" ||
-      user?.role === "coordinator"
+      isCoordinator
     ) {
       setActiveRoleView("operator");
     } else {
       setActiveRoleView("user");
     }
-  }, [viewParam, isAdmin, isOperator, isCoordinator, user?.role, router]);
+  }, [viewParam, isMounted, isAdmin, isOperator, isCoordinator, user, router]);
 
   // Explorer Data State
   const [searchQuery, setSearchQuery] = useState("");

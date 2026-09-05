@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
-import { logout, useAuthUser } from "@/lib/auth";
+import { logout, useAuthUser, getStoredUser } from "@/lib/auth";
 import { useClerk } from "@clerk/nextjs";
 import { operatorService } from "@/services/operator";
 import type { User } from "@/types";
@@ -176,35 +176,66 @@ export const Sidebar: React.FC = () => {
   };
 
   // Track active role view mode
-  const [activeRoleView, setActiveRoleView] = useState<string>("user");
+  const [activeRoleView, setActiveRoleView] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlView = searchParams.get("view");
+      if (urlView) return urlView;
+      const storedView = localStorage.getItem("tripzyy_active_role_view");
+      if (storedView) return storedView;
+      const pendingRole = localStorage.getItem("tripzyy_pending_role");
+      if (pendingRole) return pendingRole;
+      const stored = getStoredUser();
+      if (stored?.role === "operator" || stored?.operator_role) return "operator";
+      if (stored?.role) return stored.role;
+    }
+    return "user";
+  });
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
       const urlView = searchParams.get("view");
       const storedView = localStorage.getItem("tripzyy_active_role_view");
+      const pendingRole = localStorage.getItem("tripzyy_pending_role");
+      const stored = getStoredUser();
+      const effective = user || stored;
+
       if (urlView) {
         setActiveRoleView(urlView);
       } else if (storedView) {
         setActiveRoleView(storedView);
-      } else if (user?.role) {
-        setActiveRoleView(user.role);
+      } else if (pendingRole) {
+        setActiveRoleView(pendingRole);
+      } else if (effective?.role === "operator" || effective?.operator_role) {
+        setActiveRoleView("operator");
+      } else if (effective?.role === "admin") {
+        setActiveRoleView("admin");
+      } else if (effective?.role) {
+        setActiveRoleView(effective.role);
       }
     }
-  }, [pathname, user?.role]);
+  }, [pathname, user]);
+
+  const storedUser = typeof window !== "undefined" ? getStoredUser() : null;
+  const effectiveUser = user || storedUser;
+  const pendingRole = typeof window !== "undefined" ? localStorage.getItem("tripzyy_pending_role") : null;
 
   const isOperatorStaffMember = Boolean(
     isAdmin ||
     isOperator ||
     isCoordinator ||
     isOperatorStaff ||
-    user?.role === "operator" ||
-    user?.role === "coordinator" ||
-    user?.role === "admin"
+    effectiveUser?.role === "operator" ||
+    effectiveUser?.role === "coordinator" ||
+    effectiveUser?.role === "admin" ||
+    effectiveUser?.operator_role ||
+    pendingRole === "operator" ||
+    pendingRole === "coordinator"
   );
 
   const isStationAdmin = Boolean(
-    (isAdmin || user?.role === "admin") &&
+    (isAdmin || effectiveUser?.role === "admin") &&
     (pathname.startsWith("/admin") || activeRoleView === "admin") &&
     activeRoleView !== "operator" &&
     activeRoleView !== "user"
@@ -216,7 +247,6 @@ export const Sidebar: React.FC = () => {
     (activeRoleView === "operator" ||
       activeRoleView === "coordinator" ||
       pathname.startsWith("/operator")) &&
-    activeRoleView !== "user" &&
     activeRoleView !== "admin"
   );
 

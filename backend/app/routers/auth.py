@@ -37,6 +37,34 @@ async def _serialize_user(user: User, db: DbSession) -> dict:
         .where(OperatorMember.user_id == user.id, OperatorMember.is_active.is_(True))
         .limit(1)
     )
+    if not membership:
+        role_str = getattr(user.role, "value", str(user.role)).lower()
+        if role_str in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin"):
+            from app.models.enums import OperatorRole
+            op = await db.scalar(
+                select(Operator).where(Operator.slug == "tripzyy-journeys")
+            )
+            if op:
+                op_role = (
+                    OperatorRole.COORDINATOR
+                    if "coordinator" in role_str
+                    else OperatorRole.OWNER
+                )
+                title = (
+                    "Field Coordinator"
+                    if op_role == OperatorRole.COORDINATOR
+                    else "Operations Lead"
+                )
+                membership = OperatorMember(
+                    operator_id=op.id,
+                    user_id=user.id,
+                    role=op_role,
+                    job_title=title,
+                    is_active=True,
+                )
+                db.add(membership)
+                await db.commit()
+                await db.refresh(membership)
     if membership:
         data["operator_role"] = membership.role.value
         data["operator_id"] = str(membership.operator_id)
@@ -260,8 +288,13 @@ async def clerk_sync(
     last_name = clerk_info.get("last_name") or payload.last_name or ""
     verified_clerk_id = clerk_info.get("clerk_id") or clerk_user_id
 
-    # Role: prefer what Clerk metadata says, then the body, default user
-    role_str = clerk_info.get("role") or payload.role
+    # Role: prefer explicit payload role if specified as operator/coordinator/admin, then Clerk metadata, default user
+    payload_role_val = getattr(payload.role, "value", str(payload.role)).lower()
+    if payload_role_val in ("operator", "coordinator", "admin"):
+        role_str = payload_role_val
+    else:
+        role_str = clerk_info.get("role") or payload.role
+
     if isinstance(role_str, str):
         from app.models.enums import UserRole
         try:

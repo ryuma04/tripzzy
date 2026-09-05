@@ -29,6 +29,7 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { TripzyyLogo } from "@/components/ui/tripzyy-logo";
 import { logout, useAuthUser } from "@/lib/auth";
+import { useClerk } from "@clerk/nextjs";
 import { operatorService } from "@/services/operator";
 import type { User } from "@/types";
 
@@ -69,19 +70,31 @@ const explorerNavItems: NavItem[] = [
     href: "/calendar",
     icon: <CalendarIcon className="w-5 h-5" />,
   },
+  {
+    label: "Tour & Travel",
+    href: "/dashboard?view=operator",
+    icon: <Building2 className="w-5 h-5" />,
+    badge: "OPS",
+    badgeColor: "bg-[#D97706] text-white",
+  },
 ];
 
-// 2. Field Coordinator Navigation
-const coordinatorNavItems: NavItem[] = [
+// 2. Tour & Travel (Operator & Coordinator Unified) Navigation
+const tourAndTravelNavItems: NavItem[] = [
   {
-    label: "Flight Deck",
-    href: "/dashboard",
-    icon: <Compass className="w-5 h-5" />,
-    badge: "LEAD",
-    badgeColor: "bg-[#7C3AED] text-white",
+    label: "Tour & Travel Mission",
+    href: "/dashboard?view=operator",
+    icon: <Building2 className="w-5 h-5" />,
+    badge: "OPS",
+    badgeColor: "bg-[#D97706] text-white",
   },
   {
-    label: "Assigned Tours",
+    label: "Tour Departures",
+    href: "/operator",
+    icon: <Truck className="w-5 h-5" />,
+  },
+  {
+    label: "Passenger Rosters",
     href: "/operator",
     icon: <Users className="w-5 h-5" />,
   },
@@ -96,37 +109,6 @@ const coordinatorNavItems: NavItem[] = [
     icon: <Activity className="w-5 h-5" />,
   },
   {
-    label: "Departure Schedule",
-    href: "/calendar",
-    icon: <CalendarIcon className="w-5 h-5" />,
-  },
-  {
-    label: "Explore Catalog",
-    href: "/explore",
-    icon: <MapPin className="w-5 h-5" />,
-  },
-];
-
-// 3. Tour Operator Navigation
-const operatorNavItems: NavItem[] = [
-  {
-    label: "Command Center",
-    href: "/operator",
-    icon: <Building2 className="w-5 h-5" />,
-    badge: "OPS",
-    badgeColor: "bg-[#D97706] text-white",
-  },
-  {
-    label: "Tour Departures",
-    href: "/operator",
-    icon: <Truck className="w-5 h-5" />,
-  },
-  {
-    label: "Vendor Contracts",
-    href: "/operator",
-    icon: <Briefcase className="w-5 h-5" />,
-  },
-  {
     label: "Disruption Radar",
     href: "/operator",
     icon: <AlertTriangle className="w-5 h-5" />,
@@ -137,8 +119,8 @@ const operatorNavItems: NavItem[] = [
     icon: <Wallet className="w-5 h-5" />,
   },
   {
-    label: "Expeditions Desk",
-    href: "/dashboard",
+    label: "Explorer Desk",
+    href: "/dashboard?view=user",
     icon: <Compass className="w-5 h-5" />,
   },
 ];
@@ -191,6 +173,7 @@ export const Sidebar: React.FC = () => {
   const pathname = usePathname() || "/dashboard";
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { user, isAdmin, isOperator, isCoordinator } = useAuthUser();
+  const { signOut } = useClerk();
 
   const [isOperatorStaff, setIsOperatorStaff] = useState(false);
   useEffect(() => {
@@ -226,47 +209,70 @@ export const Sidebar: React.FC = () => {
 
   const handleLogout = async () => {
     await logout();
-    window.location.href = "/login";
+    await signOut({ redirectUrl: "/login" });
   };
 
-  // Determine current active role navigation
-  const currentNavItems = isAdmin
+  // Track active role view mode
+  const [activeRoleView, setActiveRoleView] = useState<string>("user");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlView = searchParams.get("view");
+      const storedView = localStorage.getItem("tripzyy_active_role_view");
+      if (urlView) {
+        setActiveRoleView(urlView);
+      } else if (storedView) {
+        setActiveRoleView(storedView);
+      } else if (user?.role) {
+        setActiveRoleView(user.role);
+      }
+    }
+  }, [pathname, user?.role]);
+
+  // Determine current active role navigation (3 User Types: Explorer, Tour & Travel, Station Admin)
+  const isTourAndTravel =
+    activeRoleView === "operator" ||
+    activeRoleView === "coordinator" ||
+    pathname.startsWith("/operator") ||
+    ((isOperator || isCoordinator || isOperatorStaff || user?.role === "operator" || user?.role === "coordinator") &&
+      activeRoleView !== "user" &&
+      activeRoleView !== "admin");
+
+  const isStationAdmin =
+    (isAdmin || pathname.startsWith("/admin") || activeRoleView === "admin") &&
+    activeRoleView !== "operator" &&
+    activeRoleView !== "user";
+
+  const currentNavItems = isStationAdmin
     ? adminNavItems
-    : isOperator || user?.role === "operator" || user?.operator_role === "owner" || user?.operator_role === "manager"
-    ? operatorNavItems
-    : isCoordinator || user?.role === "coordinator" || user?.operator_role === "coordinator"
-    ? coordinatorNavItems
+    : isTourAndTravel
+    ? tourAndTravelNavItems
     : explorerNavItems;
 
-  const roleLabel = isAdmin
+  const roleLabel = isStationAdmin
     ? "Station Admin"
-    : isOperator || user?.role === "operator"
-    ? "Operator Mission"
-    : isCoordinator || user?.role === "coordinator"
-    ? "Coordinator Deck"
+    : isTourAndTravel
+    ? "Tour & Travel Mission"
     : "Explorer Station";
 
-  const roleBadge = isAdmin
+  const roleBadge = isStationAdmin
     ? "ADMIN"
-    : isOperator || user?.role === "operator"
-    ? "OPERATOR"
-    : isCoordinator || user?.role === "coordinator"
-    ? "COORDINATOR"
+    : isTourAndTravel
+    ? "TOUR & TRAVEL"
     : "EXPLORER";
 
-  const roleBadgeColor = isAdmin
+  const roleBadgeColor = isStationAdmin
     ? "bg-[#171313]"
-    : isOperator || user?.role === "operator"
+    : isTourAndTravel
     ? "bg-[#D97706]"
-    : isCoordinator || user?.role === "coordinator"
-    ? "bg-[#7C3AED]"
     : "bg-[#15803D]";
 
-  const homeRedirect = isAdmin
+  const homeRedirect = isStationAdmin
     ? "/admin"
-    : isOperator || user?.role === "operator"
-    ? "/operator"
-    : "/dashboard";
+    : isTourAndTravel
+    ? "/dashboard?view=operator"
+    : "/dashboard?view=user";
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full justify-between p-4 bg-[#EAD7C0] text-[#171313] border-r-[4px] border-[#171313] select-none shadow-[2px_0px_10px_rgba(23,19,19,0.06)]">

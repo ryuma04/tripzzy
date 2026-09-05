@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Compass,
   Plus,
@@ -37,7 +37,7 @@ import { operatorService } from "@/services/operator";
 import { adminService } from "@/services/admin";
 import { operatorAssistService } from "@/services/engagement";
 import { operatorAdaptationService } from "@/services/adaptation";
-import { getCurrentUser, useAuthUser, switchToAdminUser } from "@/lib/auth";
+import { getCurrentUser, useAuthUser, switchToAdminUser, getStoredUser } from "@/lib/auth";
 import { DEMO_TRIPS, DEMO_DESTINATIONS } from "@/lib/demo-data";
 import { DEMO_MODE } from "@/lib/demo-mode";
 import { unwrapItems } from "@/lib/api";
@@ -53,28 +53,98 @@ import type {
   Disruption,
 } from "@/types";
 
-type DashboardRoleView = "user" | "coordinator" | "operator" | "admin";
+type DashboardRoleView = "user" | "operator" | "admin";
 
-export default function DashboardPage() {
+function DashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const viewParam = searchParams?.get("view") as DashboardRoleView | null;
   const { user, isAdmin, isOperator, isCoordinator, updateUser } =
     useAuthUser();
 
-  // Active Role Perspective (auto-detected from logged in user or toggled)
+  // Active Role Perspective (auto-detected from logged in user, URL, or toggled)
   const [activeRoleView, setActiveRoleView] =
     useState<DashboardRoleView>("user");
 
+  // Filter inside Tour & Travel dashboard (combined features)
+  const [tourTravelFilter, setTourTravelFilter] = useState<
+    "all" | "departures" | "assist" | "disruptions"
+  >("all");
+
   useEffect(() => {
+    // 1. URL search param takes highest precedence
+    if (
+      viewParam &&
+      (viewParam === "user" || viewParam === "operator" || viewParam === "admin")
+    ) {
+      setActiveRoleView(viewParam);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tripzyy_active_role_view", viewParam);
+      }
+      return;
+    }
+
+    // 2. Pending role from login/register or saved active view
+    if (typeof window !== "undefined") {
+      const pendingRole = localStorage.getItem("tripzyy_pending_role");
+      if (pendingRole === "operator" || pendingRole === "coordinator") {
+        setActiveRoleView("operator");
+        localStorage.setItem("tripzyy_active_role_view", "operator");
+        localStorage.removeItem("tripzyy_pending_role");
+        return;
+      }
+      if (pendingRole === "admin") {
+        setActiveRoleView("admin");
+        localStorage.setItem("tripzyy_active_role_view", "admin");
+        localStorage.removeItem("tripzyy_pending_role");
+        return;
+      }
+
+      const savedView = localStorage.getItem(
+        "tripzyy_active_role_view"
+      ) as DashboardRoleView | null;
+      if (
+        savedView &&
+        (savedView === "user" || savedView === "operator" || savedView === "admin")
+      ) {
+        setActiveRoleView(savedView);
+        return;
+      }
+    }
+
+    // 3. Fallback to user role
     if (isAdmin) {
       setActiveRoleView("admin");
-    } else if (isOperator || user?.role === "operator") {
+    } else if (
+      isOperator ||
+      isCoordinator ||
+      user?.role === "operator" ||
+      user?.role === "coordinator"
+    ) {
       setActiveRoleView("operator");
-    } else if (isCoordinator || user?.role === "coordinator") {
-      setActiveRoleView("coordinator");
     } else {
       setActiveRoleView("user");
     }
-  }, [isAdmin, isOperator, isCoordinator, user?.role]);
+  }, [viewParam, isAdmin, isOperator, isCoordinator, user?.role]);
+
+  const handleSwitchRoleView = (view: DashboardRoleView) => {
+    setActiveRoleView(view);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tripzyy_active_role_view", view);
+      const current = getStoredUser();
+      if (current) {
+        updateUser({
+          ...current,
+          role:
+            view === "operator"
+              ? "operator"
+              : view === "admin"
+              ? "admin"
+              : "user",
+        });
+      }
+    }
+  };
 
   // Explorer Data State
   const [searchQuery, setSearchQuery] = useState("");
@@ -212,8 +282,6 @@ export default function DashboardPage() {
           <div className="w-8 h-8 rounded-lg border-2 border-[#171313] bg-[#FAF7F2] flex items-center justify-center font-black text-xs text-[#E51919] shadow-[2px_2px_0px_#171313]">
             {activeRoleView === "user" ? (
               <Compass className="w-4 h-4" />
-            ) : activeRoleView === "coordinator" ? (
-              <Users className="w-4 h-4 text-[#7C3AED]" />
             ) : activeRoleView === "operator" ? (
               <Building2 className="w-4 h-4 text-[#D97706]" />
             ) : (
@@ -229,8 +297,6 @@ export default function DashboardPage() {
                 className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-[#171313] text-white ${
                   activeRoleView === "user"
                     ? "bg-[#E51919]"
-                    : activeRoleView === "coordinator"
-                    ? "bg-[#7C3AED]"
                     : activeRoleView === "operator"
                     ? "bg-[#D97706]"
                     : "bg-[#171313]"
@@ -238,10 +304,8 @@ export default function DashboardPage() {
               >
                 {activeRoleView === "user"
                   ? "EXPLORER"
-                  : activeRoleView === "coordinator"
-                  ? "COORDINATOR"
                   : activeRoleView === "operator"
-                  ? "OPERATOR"
+                  ? "TOUR & TRAVEL"
                   : "ADMIN"}
               </span>
             </div>
@@ -256,8 +320,8 @@ export default function DashboardPage() {
         <div className="flex items-center gap-1.5 p-1 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl self-stretch sm:self-auto overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveRoleView("user")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
+            onClick={() => handleSwitchRoleView("user")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
               activeRoleView === "user"
                 ? "bg-[#E51919] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
                 : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
@@ -269,34 +333,21 @@ export default function DashboardPage() {
 
           <button
             type="button"
-            onClick={() => setActiveRoleView("coordinator")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
-              activeRoleView === "coordinator"
-                ? "bg-[#7C3AED] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
-                : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Coordinator</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveRoleView("operator")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
+            onClick={() => handleSwitchRoleView("operator")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
               activeRoleView === "operator"
                 ? "bg-[#D97706] text-white border-[#171313] shadow-[2px_2px_0px_#171313] -translate-y-0.5"
                 : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
             }`}
           >
             <Building2 className="w-3.5 h-3.5" />
-            <span>Operator</span>
+            <span>Tour & Travel</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveRoleView("admin")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
+            onClick={() => handleSwitchRoleView("admin")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-display font-black uppercase flex items-center gap-1.5 border-2 transition-all cursor-pointer ${
               activeRoleView === "admin"
                 ? "bg-[#171313] text-white border-[#171313] shadow-[2px_2px_0px_#E51919] -translate-y-0.5"
                 : "bg-transparent text-neutral-700 border-transparent hover:bg-white"
@@ -536,175 +587,7 @@ export default function DashboardPage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════════════
-          PERSPECTIVE 2: FIELD COORDINATOR FLIGHT DECK
-         ════════════════════════════════════════════════════════════════════════ */}
-      {activeRoleView === "coordinator" && (
-        <div className="flex flex-col gap-8">
-          <div className="relative rounded-3xl border-[4px] border-[#171313] bg-[#F5F3FF] p-6 sm:p-8 md:p-10 shadow-[6px_6px_0px_#7C3AED] overflow-hidden">
-            <div className="flex flex-col lg:flex-row items-center justify-between gap-6 relative z-10">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 bg-[#7C3AED] text-white border-2 border-[#171313] rounded-md font-display font-black text-[11px] uppercase shadow-[2px_2px_0px_#171313] tracking-wider">
-                    FIELD LEAD STATION
-                  </span>
-                  <span className="text-xs font-bold text-neutral-700">
-                    Coordinator Roster • {user?.first_name || "Field Lead"}
-                  </span>
-                </div>
-                <h1 className="font-display font-black text-3xl sm:text-4xl text-[#171313] tracking-tight mb-2">
-                  Coordinator Flight Deck
-                </h1>
-                <p className="text-xs sm:text-sm font-medium text-neutral-700 max-w-xl">
-                  Manage active departure rosters, respond to passenger inquiries, verify itinerary changes, and report on-field incident status.
-                </p>
-              </div>
-
-              <Link href="/operator">
-                <NeoButton
-                  variant="primary"
-                  size="md"
-                  rightIcon={<ArrowRight className="w-4 h-4" />}
-                >
-                  Open Operator Console
-                </NeoButton>
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <StatCard
-              label="Assigned Departures"
-              value={tourGroups.length || 3}
-              icon={<Users className="w-5 h-5 text-[#7C3AED]" />}
-              color="white"
-            />
-            <StatCard
-              label="Passenger Roster"
-              value={
-                tourGroups.reduce((acc, g) => acc + (g.seats_taken || 0), 0) ||
-                18
-              }
-              icon={<UserCheck className="w-5 h-5 text-[#15803D]" />}
-              color="white"
-            />
-            <StatCard
-              label="Assist Queries"
-              value={assistThreads.length || 2}
-              icon={<MessageSquare className="w-5 h-5 text-[#2563EB]" />}
-              color="white"
-            />
-            <StatCard
-              label="Change Requests"
-              value={changeRequests.length || 1}
-              icon={<Activity className="w-5 h-5 text-[#D97706]" />}
-              color="white"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-[#7C3AED]" />
-                  <h3 className="font-display font-black text-lg text-[#171313]">
-                    Assigned Tour Departures
-                  </h3>
-                </div>
-                <Link href="/operator">
-                  <span className="text-xs font-bold text-[#7C3AED] hover:underline">
-                    View Roster →
-                  </span>
-                </Link>
-              </div>
-
-              {tourGroups.length === 0 ? (
-                <div className="py-6 text-center text-neutral-500 font-medium text-xs bg-[#FAF7F2] rounded-xl border-2 border-dashed border-neutral-300">
-                  No active departures currently assigned to your station.
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {tourGroups.slice(0, 4).map((group) => (
-                    <div
-                      key={group.id}
-                      className="p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-display font-black text-xs text-[#171313]">
-                            {group.name}
-                          </span>
-                          <span className="px-2 py-0.5 bg-[#7C3AED] text-white font-extrabold text-[9px] uppercase rounded">
-                            {group.status}
-                          </span>
-                        </div>
-                        <span className="text-xs font-medium text-neutral-600 block">
-                          {group.destination || "Western Coast Tour"}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-black text-[#171313] block">
-                          {group.seats_taken} / {group.capacity} Pax
-                        </span>
-                        <span className="text-[10px] text-neutral-500">
-                          {group.start_date || "Upcoming"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </NeoCard>
-
-            <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-[#2563EB]" />
-                  <h3 className="font-display font-black text-lg text-[#171313]">
-                    Traveler Support Inbox
-                  </h3>
-                </div>
-                <Link href="/operator">
-                  <span className="text-xs font-bold text-[#2563EB] hover:underline">
-                    All Messages →
-                  </span>
-                </Link>
-              </div>
-
-              {assistThreads.length === 0 ? (
-                <div className="py-6 text-center text-neutral-500 font-medium text-xs bg-[#FAF7F2] rounded-xl border-2 border-dashed border-neutral-300">
-                  All traveler support queries have been answered!
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {assistThreads.slice(0, 3).map((thread) => (
-                    <div
-                      key={thread.id}
-                      className="p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-display font-black text-xs text-[#171313] block">
-                          {thread.subject}
-                        </span>
-                        <span className="text-[10px] text-neutral-500">
-                          Status: {thread.status}
-                        </span>
-                      </div>
-                      <Link href="/operator">
-                        <NeoButton variant="cream" size="sm">
-                          Reply
-                        </NeoButton>
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </NeoCard>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════════════════════════════════════════════════════════════
-          PERSPECTIVE 3: TOUR OPERATOR MISSION CONTROL
+          PERSPECTIVE 2: TOUR & TRAVEL MISSION CONTROL (OPERATOR & COORDINATOR UNIFIED)
          ════════════════════════════════════════════════════════════════════════ */}
       {activeRoleView === "operator" && (
         <div className="flex flex-col gap-8">
@@ -713,17 +596,17 @@ export default function DashboardPage() {
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-0.5 bg-[#D97706] text-white border-2 border-[#171313] rounded-md font-display font-black text-[11px] uppercase shadow-[2px_2px_0px_#171313] tracking-wider">
-                    OPERATIONS MISSION CONTROL
+                    TOUR & TRAVEL OPERATIONS
                   </span>
                   <span className="text-xs font-bold text-neutral-700">
-                    {user?.operator_name || "Tripzyy Journeys Operations"}
+                    {user?.operator_name || "Tripzyy Journeys Operations"} • {user?.first_name ? `${user.first_name} ${user.last_name}` : "Operations Desk"}
                   </span>
                 </div>
                 <h1 className="font-display font-black text-3xl sm:text-4xl text-[#171313] tracking-tight mb-2">
-                  Tour Operator Command Center
+                  Tour & Travel Command Center
                 </h1>
-                <p className="text-xs sm:text-sm font-medium text-neutral-700 max-w-xl">
-                  Enterprise tour management console: Oversee tour group departures, fleet logistics, vendor contracts, incident recovery, and financial cashflow.
+                <p className="text-xs sm:text-sm font-medium text-neutral-700 max-w-2xl">
+                  Unified agency operations: Oversee tour group departures, fleet logistics, passenger rosters, client assist inquiries, and real-time field disruptions.
                 </p>
               </div>
 
@@ -740,6 +623,54 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Tour & Travel Operations Sub-Filter Tabs */}
+          <div className="flex items-center gap-2 p-1.5 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setTourTravelFilter("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+                tourTravelFilter === "all"
+                  ? "bg-[#D97706] text-white border-2 border-[#171313] shadow-[2px_2px_0px_#171313]"
+                  : "text-neutral-700 hover:bg-white"
+              }`}
+            >
+              All Operations
+            </button>
+            <button
+              type="button"
+              onClick={() => setTourTravelFilter("departures")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+                tourTravelFilter === "departures"
+                  ? "bg-[#D97706] text-white border-2 border-[#171313] shadow-[2px_2px_0px_#171313]"
+                  : "text-neutral-700 hover:bg-white"
+              }`}
+            >
+              Tour Departures ({tourGroups.length || 4})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTourTravelFilter("assist")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+                tourTravelFilter === "assist"
+                  ? "bg-[#7C3AED] text-white border-2 border-[#171313] shadow-[2px_2px_0px_#171313]"
+                  : "text-neutral-700 hover:bg-white"
+              }`}
+            >
+              Passenger Assist & Requests ({assistThreads.length + changeRequests.length || 3})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTourTravelFilter("disruptions")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-extrabold uppercase transition-all cursor-pointer ${
+                tourTravelFilter === "disruptions"
+                  ? "bg-[#E51919] text-white border-2 border-[#171313] shadow-[2px_2px_0px_#171313]"
+                  : "text-neutral-700 hover:bg-white"
+              }`}
+            >
+              Disruptions Radar ({disruptions.length})
+            </button>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             <StatCard
               label="Active Departures"
@@ -748,7 +679,7 @@ export default function DashboardPage() {
               color="white"
             />
             <StatCard
-              label="Booked Travelers"
+              label="Passenger Roster"
               value={
                 tourGroups.reduce((acc, g) => acc + (g.seats_taken || 0), 0) ||
                 32
@@ -775,76 +706,222 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
+            {/* Left 2 Columns: Departures & Inquiries */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Card 1: Live Departures Schedule (Operator Focus) */}
+              {(tourTravelFilter === "all" || tourTravelFilter === "departures") && (
+                <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-5 h-5 text-[#D97706]" />
+                      <h3 className="font-display font-black text-lg text-[#171313]">
+                        Live Departures Schedule
+                      </h3>
+                    </div>
+                    <Link href="/operator">
+                      <NeoButton variant="cream" size="sm">
+                        Manage All ({tourGroups.length})
+                      </NeoButton>
+                    </Link>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {(tourGroups.length > 0
+                      ? tourGroups.slice(0, 4)
+                      : [
+                          {
+                            id: "1",
+                            name: "Goa Coastal Heritage Group",
+                            start_date: "2026-10-15",
+                            capacity: 12,
+                            seats_taken: 8,
+                            status: "confirmed",
+                          },
+                          {
+                            id: "2",
+                            name: "Manali Valley Backpacking",
+                            start_date: "2026-11-02",
+                            capacity: 16,
+                            seats_taken: 12,
+                            status: "forming",
+                          },
+                        ]
+                    ).map((grp: any) => (
+                      <div
+                        key={grp.id}
+                        className="p-3.5 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-display font-black text-xs text-[#171313]">
+                              {grp.name}
+                            </span>
+                            <span className="px-2 py-0.5 bg-[#D97706] text-white text-[9px] font-black uppercase rounded">
+                              {grp.status}
+                            </span>
+                          </div>
+                          <span className="text-xs text-neutral-600">
+                            {grp.destination || "Expedition Route"}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-black text-xs text-[#171313] block">
+                            {grp.seats_taken || 6} / {grp.capacity || 12} Seats
+                          </span>
+                          <span className="text-[10px] text-neutral-500">
+                            {grp.start_date}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </NeoCard>
+              )}
+
+              {/* Card 2: Traveler Support & Client Inquiries (Coordinator Focus) */}
+              {(tourTravelFilter === "all" || tourTravelFilter === "assist") && (
+                <>
+                  <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
+                    <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-[#2563EB]" />
+                        <h3 className="font-display font-black text-lg text-[#171313]">
+                          Traveler Support & Inquiries Inbox
+                        </h3>
+                      </div>
+                      <Link href="/operator">
+                        <span className="text-xs font-bold text-[#2563EB] hover:underline">
+                          All Messages →
+                        </span>
+                      </Link>
+                    </div>
+
+                    {assistThreads.length === 0 ? (
+                      <div className="py-6 text-center text-neutral-500 font-medium text-xs bg-[#FAF7F2] rounded-xl border-2 border-dashed border-neutral-300">
+                        All traveler support queries have been answered!
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {assistThreads.slice(0, 3).map((thread) => (
+                          <div
+                            key={thread.id}
+                            className="p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="font-display font-black text-xs text-[#171313] block">
+                                {thread.subject || "Traveler Inquiry"}
+                              </span>
+                              <span className="text-[11px] text-neutral-600">
+                                {thread.trip_title || thread.traveller_name || "Departure Assist"} •{" "}
+                                {thread.message_count || 1} messages
+                              </span>
+                            </div>
+                            <Link href="/operator">
+                              <NeoButton variant="cream" size="sm">
+                                Reply
+                              </NeoButton>
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </NeoCard>
+
+                  {/* Card 2B: Client Change Requests Queue (Coordinator Focus) */}
+                  <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
+                    <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-[#7C3AED]" />
+                        <h3 className="font-display font-black text-lg text-[#171313]">
+                          Client Change Requests Queue
+                        </h3>
+                      </div>
+                      <Link href="/operator">
+                        <span className="text-xs font-bold text-[#7C3AED] hover:underline">
+                          Review Queue ({changeRequests.length}) →
+                        </span>
+                      </Link>
+                    </div>
+
+                    {changeRequests.length === 0 ? (
+                      <div className="py-5 text-center text-neutral-500 font-medium text-xs bg-[#FAF7F2] rounded-xl border-2 border-dashed border-neutral-300">
+                        No pending itinerary change requests from travelers.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {changeRequests.slice(0, 3).map((req) => (
+                          <div
+                            key={req.id}
+                            className="p-3 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="font-display font-black text-xs text-[#171313] block">
+                                {req.reason || "Itinerary Amendment"}
+                              </span>
+                              <span className="text-[11px] text-neutral-600">
+                                Requested by {req.requested_by_name || "Traveler"} • {req.status}
+                              </span>
+                            </div>
+                            <Link href="/operator">
+                              <NeoButton variant="cream" size="sm">
+                                Inspect
+                              </NeoButton>
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </NeoCard>
+                </>
+              )}
+            </div>
+
+            {/* Right Column: Disruptions & Quick Actions */}
+            <div className="space-y-6">
+              {/* Card 3: Disruptions Radar */}
               <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-neutral-200">
                   <div className="flex items-center gap-2">
-                    <Truck className="w-5 h-5 text-[#D97706]" />
+                    <AlertTriangle className="w-5 h-5 text-[#E51919]" />
                     <h3 className="font-display font-black text-lg text-[#171313]">
-                      Live Departures Schedule
+                      Field Disruptions Radar
                     </h3>
                   </div>
-                  <Link href="/operator">
-                    <NeoButton variant="cream" size="sm">
-                      Manage All ({tourGroups.length})
-                    </NeoButton>
-                  </Link>
+                  <span className="px-2 py-0.5 bg-[#E51919]/10 text-[#E51919] font-black text-[10px] rounded uppercase border border-[#E51919]/20">
+                    LIVE
+                  </span>
                 </div>
 
-                <div className="flex flex-col gap-3">
-                  {(tourGroups.length > 0
-                    ? tourGroups.slice(0, 4)
-                    : [
-                        {
-                          id: "1",
-                          name: "Goa Coastal Heritage Group",
-                          start_date: "2026-10-15",
-                          capacity: 12,
-                          seats_taken: 8,
-                          status: "confirmed",
-                        },
-                        {
-                          id: "2",
-                          name: "Manali Valley Backpacking",
-                          start_date: "2026-11-02",
-                          capacity: 16,
-                          seats_taken: 12,
-                          status: "forming",
-                        },
-                      ]
-                  ).map((grp: any) => (
-                    <div
-                      key={grp.id}
-                      className="p-3.5 bg-[#FAF7F2] border-2 border-[#171313] rounded-xl flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-display font-black text-xs text-[#171313]">
-                            {grp.name}
-                          </span>
-                          <span className="px-2 py-0.5 bg-[#D97706] text-white text-[9px] font-black uppercase rounded">
-                            {grp.status}
-                          </span>
-                        </div>
-                        <span className="text-xs text-neutral-600">
-                          {grp.destination || "Expedition Route"}
+                {disruptions.length === 0 ? (
+                  <div className="p-4 bg-[#F0FDF4] border-2 border-[#15803D] rounded-xl text-center">
+                    <UserCheck className="w-6 h-6 text-[#15803D] mx-auto mb-1" />
+                    <p className="font-bold text-xs text-[#15803D]">
+                      Clear Skies Ahead
+                    </p>
+                    <p className="text-[11px] text-neutral-600 mt-0.5">
+                      No active disruptions reported on scheduled routes.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2.5">
+                    {disruptions.slice(0, 3).map((disruption) => (
+                      <div
+                        key={disruption.id}
+                        className="p-3 bg-[#FEF2F2] border-2 border-[#E51919] rounded-xl"
+                      >
+                        <span className="font-display font-black text-xs text-[#991B1B] block mb-0.5">
+                          {disruption.title}
                         </span>
+                        <p className="text-[11px] text-neutral-700 font-medium">
+                          {disruption.description}
+                        </p>
                       </div>
-                      <div className="text-right">
-                        <span className="font-black text-xs text-[#171313] block">
-                          {grp.seats_taken || 6} / {grp.capacity || 12} Seats
-                        </span>
-                        <span className="text-[10px] text-neutral-500">
-                          {grp.start_date}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </NeoCard>
-            </div>
 
-            <div>
+              {/* Card 4: Quick Operations Actions */}
               <NeoCard className="p-6 bg-white border-[3.5px] border-[#171313] shadow-[4px_4px_0px_#171313]">
                 <h3 className="font-display font-black text-lg text-[#171313] mb-4 pb-3 border-b-2 border-neutral-200">
                   Quick Actions
@@ -858,6 +935,12 @@ export default function DashboardPage() {
                   </Link>
                   <Link href="/operator">
                     <NeoButton variant="cream" size="sm" className="w-full justify-start">
+                      <Users className="w-4 h-4 mr-2 text-[#15803D]" />
+                      Passenger Assist Desk
+                    </NeoButton>
+                  </Link>
+                  <Link href="/operator">
+                    <NeoButton variant="cream" size="sm" className="w-full justify-start">
                       <AlertTriangle className="w-4 h-4 mr-2 text-[#E51919]" />
                       Disruption Radar ({disruptions.length})
                     </NeoButton>
@@ -866,12 +949,6 @@ export default function DashboardPage() {
                     <NeoButton variant="cream" size="sm" className="w-full justify-start">
                       <Briefcase className="w-4 h-4 mr-2 text-[#2563EB]" />
                       Vendor Contracts & Fleet
-                    </NeoButton>
-                  </Link>
-                  <Link href="/operator">
-                    <NeoButton variant="cream" size="sm" className="w-full justify-start">
-                      <Users className="w-4 h-4 mr-2 text-[#7C3AED]" />
-                      Field Coordinator Roster
                     </NeoButton>
                   </Link>
                 </div>
@@ -1046,5 +1123,19 @@ export default function DashboardPage() {
         availableTrips={trips}
       />
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 font-display font-bold text-center">
+          Loading Workspace Dashboard...
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }

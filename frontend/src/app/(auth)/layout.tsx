@@ -26,7 +26,7 @@ export default function AuthLayout({
         </Link>
 
         {/* Content Container */}
-        <div className="w-full max-w-md z-10">{children}</div>
+        <div className="w-full max-w-xl z-10">{children}</div>
 
         {/* Footer info */}
         <div className="mt-8 text-center text-xs font-bold text-neutral-600 z-10">

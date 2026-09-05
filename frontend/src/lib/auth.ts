@@ -40,7 +40,7 @@ export function getRoleRedirectPath(roleOrUser: UserRole | User | null | undefin
       return "/admin";
     case "operator":
     case "coordinator":
-      return "/operator";
+      return "/dashboard?view=operator";
     default:
       return "/dashboard";
   }

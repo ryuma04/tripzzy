@@ -227,8 +227,14 @@ async def clerk_sync(payload: ClerkSyncRequest, db: DbSession):
         await db.commit()
         await db.refresh(user)
     else:
+        updated = False
         if not user.is_email_verified:
             user.is_email_verified = True
+            updated = True
+        if payload.role and user.role != payload.role:
+            user.role = payload.role
+            updated = True
+        if updated:
             await db.commit()
             await db.refresh(user)
 

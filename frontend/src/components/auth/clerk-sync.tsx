@@ -97,7 +97,25 @@ export function ClerkSync() {
           }),
         });
 
-        const res = await response.json() as { success: boolean; data?: AuthResponse };
+        const res = (await response.json()) as {
+          success: boolean;
+          message?: string;
+          data?: AuthResponse;
+          error?: { code: string; details?: any };
+        };
+
+        if (response.status === 403 || res.error?.code === "FORBIDDEN") {
+          console.warn("Role mismatch / Forbidden:", res.message);
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("tripzyy_auth_error", res.message || "Forbidden");
+            localStorage.removeItem("tripzyy_pending_role");
+            window.location.href = `/login?error=role_forbidden&msg=${encodeURIComponent(
+              res.message ||
+                "This account is registered as a Traveller and cannot access Tour & Travel."
+            )}`;
+          }
+          return;
+        }
 
         if (res.success && res.data?.access_token) {
           localStorage.setItem("tripzyy_token", res.data.access_token);
@@ -111,12 +129,16 @@ export function ClerkSync() {
               localStorage.setItem("tripzyy_active_role_view", "operator");
             } else if (res.data.user.role === "admin") {
               localStorage.setItem("tripzyy_active_role_view", "admin");
+            } else {
+              localStorage.setItem("tripzyy_active_role_view", "user");
             }
           }
           if (typeof window !== "undefined") {
             localStorage.removeItem("tripzyy_pending_role");
           }
           window.dispatchEvent(new Event("tripzyy_auth_changed"));
+        } else if (!response.ok) {
+          console.warn("Clerk sync returned non-OK status:", response.status, res.message || res);
         }
       } catch (err) {
         console.error("Clerk sync failed:", err);

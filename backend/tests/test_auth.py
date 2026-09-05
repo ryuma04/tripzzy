@@ -398,3 +398,39 @@ async def test_clerk_sync_links_existing_user(
     data = resp.json()["data"]
     assert data["user"]["email"] == registration["email"].lower()
 
+
+async def test_clerk_sync_rejects_traveller_accessing_operator(
+    client: AsyncClient, registration, monkeypatch
+):
+    # 1. Register as a normal traveller (role="user")
+    reg = await client.post("/auth/register", json=registration)
+    assert reg.status_code == 201
+
+    clerk_id = "user_clerk_traveller_block_789"
+    monkeypatch.setattr(
+        "app.core.clerk.verify_clerk_token",
+        lambda token: {"sub": clerk_id},
+    )
+
+    async def mock_get_info(token: str):
+        return {
+            "clerk_id": clerk_id,
+            "email": registration["email"],
+            "first_name": registration["first_name"],
+            "last_name": registration["last_name"],
+            "role": "operator",
+        }
+
+    monkeypatch.setattr("app.core.clerk.get_clerk_user_info", mock_get_info)
+
+    # 2. Try to sync with role="operator" on an existing traveller account
+    resp = await client.post(
+        "/auth/clerk-sync",
+        headers={"Authorization": "Bearer valid_clerk_session"},
+        json={"email": registration["email"], "role": "operator"},
+    )
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["error"]["code"] == "FORBIDDEN"
+    assert "registered as a Traveller" in body["message"]
+

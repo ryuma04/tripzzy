@@ -182,7 +182,7 @@ async def get_clerk_user_info(token: str) -> dict:
             "last_name": user_data.get("last_name"),
             "role": role,
         }
-    except httpx.HTTPError as exc:
+    except Exception as exc:
         logger.error("Failed to fetch Clerk user %s: %s", clerk_user_id, exc)
         # Fall back to token-only verification rather than blocking login
         return {

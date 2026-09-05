@@ -9,6 +9,7 @@ import {
   Shield,
   Sparkles,
   CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { NeoCard } from "@/components/ui/neo-card";
 import { SignIn } from "@clerk/nextjs";
@@ -58,6 +59,8 @@ const ROLE_CONFIGS: Record<
 function LoginContent() {
   const searchParams = useSearchParams();
   const sessionExpired = searchParams?.get("expired") === "1";
+  const isRoleForbidden = searchParams?.get("error") === "role_forbidden";
+  const forbiddenMessage = searchParams?.get("msg");
 
   const [role, setRole] = useState<OnboardingRole>("user");
 
@@ -102,6 +105,18 @@ function LoginContent() {
           Sign in to access your {currentConfig.title.toLowerCase()}.
         </p>
       </div>
+
+      {isRoleForbidden && (
+        <div className="mb-4 p-3.5 bg-[#FEF2F2] border-2 border-[#DC2626] rounded-xl shadow-[3px_3px_0px_#DC2626]">
+          <p className="font-display font-extrabold text-xs text-[#DC2626] flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4" /> Role Access Restricted
+          </p>
+          <p className="text-[11px] font-medium text-neutral-800 mt-1">
+            {forbiddenMessage ||
+              "This account is registered as a Traveller and cannot access Tour & Travel operations. Please select the Explorer workspace or use an authorized Tour Operator account."}
+          </p>
+        </div>
+      )}
 
       {sessionExpired && (
         <div className="mb-4 p-3 bg-[#FFF4E6] border-2 border-[#D94B3D] rounded-xl shadow-[2px_2px_0px_#D94B3D]">

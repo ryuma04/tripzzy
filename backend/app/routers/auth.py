@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.core import responses
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession, bearer_scheme
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.rate_limit import rate_limit_auth
 from app.repositories.user_repository import UserRepository
 from sqlalchemy import select
@@ -316,6 +316,36 @@ async def clerk_sync(
         if user is None and email:
             user = await UserRepository(db).get_by_email(email)
 
+        # ── Role boundary verification: Traveller cannot log in to Tour & Travel ──
+        if user is not None:
+            existing_user_role = getattr(user.role, "value", str(user.role)).lower()
+            existing_mem = await db.scalar(
+                select(OperatorMember).where(
+                    OperatorMember.user_id == user.id,
+                    OperatorMember.is_active.is_(True),
+                ).limit(1)
+            )
+            is_staff_user = (
+                existing_user_role in ("operator", "coordinator", "admin", "userrole.operator", "userrole.coordinator", "userrole.admin")
+                or existing_mem is not None
+            )
+
+            # Block ordinary travellers from accessing Tour & Travel workspace
+            if payload_role_val in ("operator", "coordinator"):
+                if not is_staff_user:
+                    raise ForbiddenError(
+                        "This account is registered as a Traveller and cannot access "
+                        "Tour & Travel operations. Please sign in to the Explorer workspace, "
+                        "or use an authorized Tour Operator account."
+                    )
+
+            # Block non-admins from accessing Station Administrator workspace
+            if payload_role_val == "admin":
+                if existing_user_role not in ("admin", "userrole.admin"):
+                    raise ForbiddenError(
+                        "This account is not authorized to access Station Administration."
+                    )
+
         if user is None:
             # Create new user
             user = User(
@@ -413,7 +443,6 @@ async def clerk_sync(
                         await db.rollback()
 
         # ── 5. Issue Tripzyy JWT tokens ────────────────────────────────
-        await db.refresh(user)
         service = AuthService(db)
         tokens = service.issue_tokens(user)
         tokens.pop("_expires_at", None)
@@ -427,7 +456,7 @@ async def clerk_sync(
             resp.headers["Access-Control-Allow-Credentials"] = "true"
         return resp
 
-    except UnauthorizedError as exc:
+    except (UnauthorizedError, ForbiddenError) as exc:
         await db.rollback()
         resp = responses.error(
             exc.message,

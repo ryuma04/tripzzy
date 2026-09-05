@@ -24,6 +24,8 @@ import {
   Ticket,
   Download,
   FileText,
+  Wand2,
+  Headphones,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { NeoCard } from "@/components/ui/neo-card";
@@ -39,6 +41,8 @@ import { BudgetOverview } from "@/components/budget/budget-overview";
 import { BookingPanel } from "@/components/booking/booking-panel";
 import { CheckoutModal } from "@/components/booking/checkout-modal";
 import { SplitBillModal } from "@/components/budget/split-bill-modal";
+import { ChangePanel } from "@/components/adaptation/change-panel";
+import { AssistPanel } from "@/components/engagement/assist-panel";
 import { TripMap } from "@/components/map";
 import { tripService } from "@/services/trips";
 import { bookingService } from "@/services/bookings";
@@ -78,6 +82,8 @@ export default function TripDetailPage() {
     { id: "map", label: "Interactive Route Map", icon: <MapIcon className="w-4 h-4" /> },
     { id: "bookings", label: "Bookings & Payments", icon: <Ticket className="w-4 h-4" /> },
     { id: "budget", label: "Budget & Expenses", icon: <Wallet className="w-4 h-4" /> },
+    { id: "adaptation", label: "Change Requests & Adapt", icon: <Wand2 className="w-4 h-4" /> },
+    { id: "assist", label: "Live Assist & Reviews", icon: <Headphones className="w-4 h-4" /> },
   ];
 
   useEffect(() => {
@@ -453,6 +459,14 @@ export default function TripDetailPage() {
 
 
         {activeTab === "budget" && <BudgetOverview trip={trip} />}
+
+        {activeTab === "adaptation" && (
+          <ChangePanel trip={trip} />
+        )}
+
+        {activeTab === "assist" && (
+          <AssistPanel trip={trip} />
+        )}
 
         {activeTab === "transport" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

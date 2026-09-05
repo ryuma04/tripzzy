@@ -89,34 +89,9 @@ const tourAndTravelNavItems: NavItem[] = [
     badgeColor: "bg-[#D97706] text-white",
   },
   {
-    label: "Tour Departures",
+    label: "Tour Operations",
     href: "/operator",
     icon: <Truck className="w-5 h-5" />,
-  },
-  {
-    label: "Passenger Rosters",
-    href: "/operator",
-    icon: <Users className="w-5 h-5" />,
-  },
-  {
-    label: "Traveler Inquiries",
-    href: "/operator",
-    icon: <MessageSquare className="w-5 h-5" />,
-  },
-  {
-    label: "Change Requests",
-    href: "/operator",
-    icon: <Activity className="w-5 h-5" />,
-  },
-  {
-    label: "Disruption Radar",
-    href: "/operator",
-    icon: <AlertTriangle className="w-5 h-5" />,
-  },
-  {
-    label: "Revenue & Bookings",
-    href: "/operator",
-    icon: <Wallet className="w-5 h-5" />,
   },
   {
     label: "Explorer Desk",
@@ -161,11 +136,6 @@ const secondaryNavItems: NavItem[] = [
     label: "Profile",
     href: "/profile",
     icon: <UserIcon className="w-5 h-5" />,
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: <Settings className="w-5 h-5" />,
   },
 ];
 
